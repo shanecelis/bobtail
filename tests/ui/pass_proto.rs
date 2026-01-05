@@ -8,13 +8,13 @@ impl From<u8> for PColor {
 
 struct Pico8;
 impl Pico8 {
-    fn sset(&mut self, _pos: (u32,u32), _color: Option<PColor>, _sheet_index: Option<usize>) -> Result<(), ()> {
+    fn sset(&mut self, _pos: (u32, u32), _color: Option<PColor>, _sheet_index: Option<usize>) -> Result<(), ()> {
         Ok(())
     }
 }
 
 define_tail_optional_macro!(
-    sset => fn sset(
+    sset /* new macro name */ => fn sset(
         &mut self,
         pos: (u32, u32),
         #[tail]
@@ -26,6 +26,9 @@ define_tail_optional_macro!(
 
 fn main() {
     let mut pico = Pico8;
-    let maybe_color: Option<PColor> = None;
-    sset!(pico, (0,0), @raw maybe_color, None).unwrap();
+    sset!(pico, (0, 0)).unwrap();
+    sset!(pico, (1, 2), 7u8).unwrap();
+    sset!(pico, (3, 4), None, 9usize).unwrap();
 }
+
+

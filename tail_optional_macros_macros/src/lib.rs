@@ -59,6 +59,18 @@ fn typed_args_after_receiver(sig: &syn::Signature) -> Vec<(&PatIdent, &syn::Type
         .collect()
 }
 
+fn receiver_tokens(sig: &syn::Signature) -> Option<proc_macro2::TokenStream> {
+    let syn::FnArg::Receiver(r) = sig.inputs.iter().next()? else {
+        return None;
+    };
+    Some(match (&r.reference, &r.mutability) {
+        (Some(_), Some(_)) => quote!(&mut self),
+        (Some(_), None) => quote!(&self),
+        (None, Some(_)) => quote!(mut self),
+        (None, None) => quote!(self),
+    })
+}
+
 fn parse_attr_args(attr: &Attribute) -> Result<Vec<NestedMeta>> {
     let punct: Punctuated<NestedMeta, Token![,]> =
         attr.parse_args_with(Punctuated::<NestedMeta, Token![,]>::parse_terminated)?;
@@ -67,6 +79,7 @@ fn parse_attr_args(attr: &Attribute) -> Result<Vec<NestedMeta>> {
 
 fn generate_define_for_method(
     crate_path: proc_macro2::TokenStream,
+    receiver: Option<proc_macro2::TokenStream>,
     type_params: &[(&PatIdent, &syn::Type)],
     method: &Ident,
     spec: &MethodSpec,
@@ -83,30 +96,41 @@ fn generate_define_for_method(
 
     let (req, opt) = type_params.split_at(required);
 
-    let req_pairs = req.iter().map(|(pat, ty)| {
-        let name = &pat.ident;
-        quote!(#name : #ty)
-    });
-
     let mut conv_map = std::collections::HashMap::<String, Path>::new();
     for (arg, p) in &spec.conv {
         conv_map.insert(arg.to_string(), p.clone());
     }
 
-    let opt_specs = opt.iter().map(|(pat, ty)| {
+    let mut proto_params: Vec<proc_macro2::TokenStream> = Vec::new();
+    if let Some(rcv) = receiver {
+        proto_params.push(quote!(#rcv,));
+    }
+    for (pat, ty) in req {
         let name = &pat.ident;
+        proto_params.push(quote!(#name : #ty,));
+    }
+    if let Some(((first_pat, first_ty), rest)) = opt.split_first() {
+        let name = &first_pat.ident;
         if let Some(conv) = conv_map.get(&name.to_string()) {
-            quote!(#name : #ty => #conv)
+            proto_params.push(quote!(#[tail] #[map(#conv)] #name : #first_ty,));
         } else {
-            quote!(#name : #ty)
+            proto_params.push(quote!(#[tail] #name : #first_ty,));
         }
-    });
+        for (pat, ty) in rest {
+            let name = &pat.ident;
+            if let Some(conv) = conv_map.get(&name.to_string()) {
+                proto_params.push(quote!(#[map(#conv)] #name : #ty,));
+            } else {
+                proto_params.push(quote!(#name : #ty,));
+            }
+        }
+    }
 
     Ok(quote! {
         #crate_path::define_tail_optional_macro!(
-            #macro_name => #method
-            ( #(#req_pairs),* )
-            [ #(#opt_specs),* ]
+            #macro_name => fn #method(
+                #(#proto_params)*
+            );
         );
     })
 }
@@ -279,7 +303,8 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
 
                 let sig_args = typed_args_after_receiver(&method_fn.sig);
-                match generate_define_for_method(crate_path.clone(), &sig_args, &spec.method, &spec) {
+                let receiver = receiver_tokens(&method_fn.sig);
+                match generate_define_for_method(crate_path.clone(), receiver, &sig_args, &spec.method, &spec) {
                     Ok(ts) => generated.push(ts),
                     Err(e) => return e.to_compile_error().into(),
                 }

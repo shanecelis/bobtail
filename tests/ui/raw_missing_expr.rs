@@ -8,9 +8,13 @@ impl Pico8 {
 }
 
 define_tail_optional_macro!(
-    sset => sset
-    (pos: (u32, u32))
-    [color: Option<u8>, sheet_index: Option<usize>]
+    sset => fn sset(
+        &mut self,
+        pos: (u32, u32),
+        #[tail]
+        color: Option<u8>,
+        sheet_index: Option<usize>,
+    ) -> Result<(), ()>;
 );
 
 fn main() {

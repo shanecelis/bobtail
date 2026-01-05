@@ -274,17 +274,594 @@ macro_rules! __tail_omittable_munch {
 /// ```
 #[macro_export]
 macro_rules! define_tail_optional_macro {
+    // --- New syntax: method-like function prototype ---
+    //
+    // Example:
+    // define_tail_optional_macro!(
+    //     sset => fn sset(
+    //         &mut self,
+    //         pos: (u32, u32),
+    //         #[tail]
+    //         color: Option<PColor>,
+    //         sheet_index: Option<usize>,
+    //     ) -> Result<(), ()>;
+    // );
     (
         $(#[$meta:meta])*
+        $mac_name:ident => fn $method:ident ( $($params:tt)* ) $(-> $ret:ty)? ;
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($params)* )
+        );
+    };
+
+    // --- Prototype parsing helpers (implementation detail) ---
+    (@proto
+        $(#[$meta:meta])*
         $mac_name:ident => $method:ident
-        ( $($req_name:ident : $req_ty:ty),* $(,)? )
-        [ $($opt_name:ident : $opt_ty:ty $(=> $opt_conv:path)?),* $(,)? ]
+        ( $($params:tt)* )
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( )
+            ( )
+            $($params)*
+        );
+    };
+
+    (@proto_finish
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_name:ident ,)* )
+        ( $($opt_spec:tt ,)* )
     ) => {
         $crate::define_tail_optional_macro!(@define_generated_macro
             $(#[$meta])*
             $mac_name => $method
             ( $($req_name),* )
-            ( $( ( $opt_name : $opt_ty $(=> $opt_conv)? ) ),* )
+            ( $($opt_spec),* )
+        );
+    };
+
+    // Skip leading commas.
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+
+    // End of parameter list.
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+        );
+    };
+
+    // Receiver forms to ignore (do not count as required args).
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        & mut self $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        & self $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        mut self $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        self $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+
+    // Start of tail-omittables: the first parameter preceded by `#[tail]` is the first omittable,
+    // and all remaining parameters are treated as tail-omittable.
+    //
+    // Conversions use `#[map(path::to::conv)]` and can be combined with `#[tail]`.
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] #[map($conv:path)] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] #[map($conv:path)] $(#[$_other:meta])*
+        $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] #[map($conv:path)] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] #[map($conv:path)] $(#[$_other:meta])*
+        $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+        );
+    };
+
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+        );
+    };
+
+    // Required parameter (ignores any non-tail attrs).
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        mut $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* $name, )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_req
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* $name, )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        mut $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* $name, )
+            ( $($opt_acc)* )
+        );
+    };
+    (@proto_req
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* $name, )
+            ( $($opt_acc)* )
+        );
+    };
+
+    // Optional mode: consume remaining params as tail-omittable.
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* )
+        );
+    };
+    // In optional mode, allow per-parameter `#[tail]` / `#[map(path)]` too (useful for conversion hooks).
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[map($conv:path)] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[map($conv:path)] $(#[$_other:meta])*
+        $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[map($conv:path)] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[map($conv:path)] $(#[$_other:meta])*
+        $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty => $conv ), )
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        mut $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        #[tail] $(#[$_other:meta])*
+        $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        mut $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        $name:ident : $ty:ty , $($rest:tt)*
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_opt
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+            $($rest)*
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        mut $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
+        );
+    };
+    (@proto_opt
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_acc:tt)* )
+        ( $($opt_acc:tt)* )
+        $(#[$_attr:meta])*
+        $name:ident : $ty:ty
+    ) => {
+        $crate::define_tail_optional_macro!(
+            @proto_finish
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_acc)* )
+            ( $($opt_acc)* ( $name : $ty ), )
         );
     };
 
@@ -486,9 +1063,14 @@ mod tests {
     }
 
     define_tail_optional_macro!(
-        sset => sset
-        (pos: (u32, u32))
-        [color: Option<PColor> => PColor::from, sheet_index: Option<usize>]
+        sset => fn sset(
+            &mut self,
+            pos: (u32, u32),
+            #[tail]
+            #[map(PColor::from)]
+            color: Option<PColor>,
+            sheet_index: Option<usize>,
+        ) -> Result<(), ()>;
     );
 
     #[test]

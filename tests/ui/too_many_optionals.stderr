@@ -1,7 +1,7 @@
 error: too many optional arguments
-  --> tests/ui/too_many_optionals.rs:19:5
+  --> tests/ui/too_many_optionals.rs:23:5
    |
-19 |     sset!(pico, (0,0), 1u8, 2usize, 3usize).unwrap();
+23 |     sset!(pico, (0,0), 1u8, 2usize, 3usize).unwrap();
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: this error originates in the macro `$crate::__tail_omittable_munch` which comes from the expansion of the macro `sset` (in Nightly builds, run with -Z macro-backtrace for more info)
