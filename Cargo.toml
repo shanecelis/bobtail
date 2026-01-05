@@ -5,8 +5,14 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "macro_rules! generator for methods with trailing Option<T> parameters (auto Some, None, @raw escape, per-arg conversion)."
 
+[workspace]
+members = ["tail_optional_macros_macros"]
+
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+tail_optional_macros_macros = { path = "tail_optional_macros_macros" }
 
 [dev-dependencies]
 trybuild = "1"
