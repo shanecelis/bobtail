@@ -1,18 +1,18 @@
 
 #![forbid(unsafe_code)]
-//! Tail optional-parameter macros for methods.
+//! Tail omittable-parameter macros for methods.
 //!
 //! Provides:
-//! - `__opt!` and `__opt_conv!` helpers for `None`, `Some(...)`, and `@raw ...` passthrough
-//! - `define_tail_optional_macro!` to generate a free macro that calls a method and fills trailing `Option<T>` params.
+//! - `__opt!` and `__opt_conv!` legacy helpers for `None`, `Some(...)`, and `@raw ...` passthrough
+//! - `define_tail_optional_macro!` to generate a free macro that calls a method and fills trailing omittable params.
 //!
 //! ## Features
 //! - M required args, N optional trailing args
-//! - Omitted optional args default to `None`
-//! - Provided optional args default to `Some(expr)` (no need to write `Some(...)`)
-//! - Literal `None` passes through
-//! - `@raw expr` escape hatch passes `expr` through unchanged (useful for `Option<T>`)
-//! - Per-optional-arg conversion hook: `name: Ty => path::to::conv` wraps as `Some(conv(expr))`
+//! - Omitted optional args default to `Default::default()`
+//! - Provided optional args default to `T::from(expr)` (i.e. `From::from(expr)` with type inferred from the slot)
+//! - Literal `None` is treated like omission (`Default::default()`), so `Option<T>` still becomes `None`
+//! - `@raw expr` escape hatch passes `expr` through unchanged (useful for passing a pre-built `Option<T>`, etc.)
+//! - Per-optional-arg pre-conversion hook: `name: Ty => path::to::conv` uses `T::from(conv(expr))`
 
 /// Wrap an expression into `Some(...)`, with support for `None` and `@raw` passthrough.
 ///
@@ -40,23 +40,31 @@ macro_rules! __opt_conv {
     ($e:expr, $conv:path) => { Some($conv($e)) };
 }
 
-/// Define a free macro that calls a method and supplies trailing optional `Option<T>` args.
+/// Define a free macro that calls a method and supplies trailing "omittable" args.
+///
+/// An omittable argument type must implement:
+/// - `Default` (used when omitted)
+/// - `From<Expr>` for each expression form you want to pass (used when provided)
+///
+/// `Option<T>` is a natural fit:
+/// - `Option<T>::default()` is `None`
+/// - `Option<T>::from(x)` is `Some(x)`
 ///
 /// Syntax:
 /// ```rust,ignore
 /// define_tail_optional_macro!(
 ///     macro_name => method_name
 ///     ( req1: Ty1, req2: Ty2, ... )
-///     [ opt1: InnerTy1, opt2: InnerTy2 => path::to::conv, ... ]
+///     [ opt1: OmittableTy1, opt2: OmittableTy2 => path::to::conv, ... ]
 /// );
 /// ```
 ///
 /// Generated call form:
 /// ```rust,ignore
-/// macro_name!(obj, req1, req2, ...);                      // pads optionals with None
-/// macro_name!(obj, req1, req2, ..., opt1);                // wraps as Some(opt1)
-/// macro_name!(obj, req1, req2, ..., None, opt2);          // literal None passes through
-/// macro_name!(obj, req1, req2, ..., @raw some_option);    // passes through unchanged
+/// macro_name!(obj, req1, req2, ...);                      // pads omitted with Default::default()
+/// macro_name!(obj, req1, req2, ..., x);                   // uses T::from(x)
+/// macro_name!(obj, req1, req2, ..., None, y);             // `None` means "use default" (works nicely with Option)
+/// macro_name!(obj, req1, req2, ..., @raw already_built);   // passes through unchanged
 /// ```
 #[macro_export]
 macro_rules! define_tail_optional_macro {
@@ -161,9 +169,9 @@ macro_rules! define_tail_optional_macro {
         )
     };
 
-    // Literal `None` for the next slot. This must be handled here (token-level),
-    // because once it's captured as an `expr` fragment it becomes opaque and
-    // can't be pattern-matched as `None` by downstream macros.
+    // Literal `None` for the next slot is treated like omission.
+    // This must be handled here (token-level), because once it's captured as an
+    // `expr` fragment it becomes opaque and can't be pattern-matched as `None`.
     (@munch
         $obj:expr, $method:ident,
         ($($req:expr),*),
@@ -176,7 +184,7 @@ macro_rules! define_tail_optional_macro {
             ($($req),*),
             ( $($($tail)*)? ),
             ( $($slots),* ),
-            ( $($acc,)* None )
+            ( $($acc,)* $crate::define_tail_optional_macro!(@default_for $slot_spec) )
         )
     };
     (@munch
@@ -191,7 +199,7 @@ macro_rules! define_tail_optional_macro {
             ($($req),*),
             ( $($($tail)*)? ),
             ( $($slots),* ),
-            ( $($acc,)* None )
+            ( $($acc,)* $crate::define_tail_optional_macro!(@default_for $slot_spec) )
         )
     };
 
@@ -249,7 +257,7 @@ macro_rules! define_tail_optional_macro {
         )
     };
 
-    // No provided args left: default remaining slots to None.
+    // No provided args left: default remaining slots.
     (@munch
         $obj:expr, $method:ident,
         ($($req:expr),*),
@@ -289,21 +297,23 @@ macro_rules! define_tail_optional_macro {
     };
 
     (@wrap_expr $e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
-        $crate::__opt_conv!($e, $conv)
+        ::core::convert::From::from($conv($e))
     };
     (@wrap_expr $e:expr, ( $name:ident : $ty:ty )) => {
-        $crate::__opt!($e)
+        ::core::convert::From::from($e)
     };
 
     (@wrap_raw $e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
-        $crate::__opt_conv!(@raw $e, $conv)
+        $e
     };
     (@wrap_raw $e:expr, ( $name:ident : $ty:ty )) => {
-        $crate::__opt!(@raw $e)
+        $e
     };
 
-    (@none_for ( $name:ident : $ty:ty => $conv:path )) => { None };
-    (@none_for ( $name:ident : $ty:ty )) => { None };
+    (@default_for ( $name:ident : $ty:ty => $conv:path )) => { ::core::default::Default::default() };
+    (@default_for ( $name:ident : $ty:ty )) => { ::core::default::Default::default() };
+
+    (@none_for $($t:tt)*) => { $crate::define_tail_optional_macro!(@default_for $($t)*) };
 }
 
 #[cfg(test)]
@@ -340,7 +350,7 @@ mod tests {
     define_tail_optional_macro!(
         sset => sset
         (pos: (u32, u32))
-        [color: PColor => PColor::from, sheet_index: usize]
+        [color: Option<PColor> => PColor::from, sheet_index: Option<usize>]
     );
 
     #[test]

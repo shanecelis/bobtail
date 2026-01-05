@@ -25,7 +25,7 @@ define_tail_optional_macro!(
     /// Set a pixel with optional color and optional sheet index.
     sset => sset
     (pos: (u32, u32))
-    [color: PColor => PColor::from, sheet_index: usize]
+    [color: Option<PColor> => PColor::from, sheet_index: Option<usize>]
 );
 
 fn main() -> Result<(), ()> {

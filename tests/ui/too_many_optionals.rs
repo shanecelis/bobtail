@@ -10,7 +10,7 @@ impl Pico8 {
 define_tail_optional_macro!(
     sset => sset
     (pos: (u32, u32))
-    [color: u8, sheet_index: usize]
+    [color: Option<u8>, sheet_index: Option<usize>]
 );
 
 fn main() {
