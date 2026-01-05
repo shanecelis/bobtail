@@ -40,6 +40,209 @@ macro_rules! __opt_conv {
     ($e:expr, $conv:path) => { Some($conv($e)) };
 }
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __tail_omittable_default_for {
+    (( $name:ident : $ty:ty => $conv:path )) => { ::core::default::Default::default() };
+    (( $name:ident : $ty:ty )) => { ::core::default::Default::default() };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __tail_omittable_wrap_expr {
+    ($e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
+        ::core::convert::From::from($conv($e))
+    };
+    ($e:expr, ( $name:ident : $ty:ty )) => {
+        ::core::convert::From::from($e)
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __tail_omittable_munch {
+    // Skip any leading commas in the provided stream (handles trailing commas too).
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        (, $($tail:tt)*),
+        ( $($slot_spec:tt),* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            ( $($tail)* ),
+            ( $($slot_spec),* ),
+            ( $($acc),* )
+        )
+    };
+
+    // Literal `None` for the next slot is treated like omission/default.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( None $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* $crate::__tail_omittable_default_for!($slot_spec) )
+        )
+    };
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( (None) $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* $crate::__tail_omittable_default_for!($slot_spec) )
+        )
+    };
+
+    // `@raw expr` provided for the next slot: passthrough unchanged.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( @raw $e:expr $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* $e )
+        )
+    };
+
+    // `@raw` must be followed by an expression.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( @raw , $($tail:tt)* ),
+        ( $($slot_spec:tt),* ),
+        ( $($acc:expr),* )
+    ) => {
+        compile_error!("@raw must be followed by an expression");
+    };
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( @raw ),
+        ( $($slot_spec:tt),* ),
+        ( $($acc:expr),* )
+    ) => {
+        compile_error!("@raw must be followed by an expression");
+    };
+
+    // Regular `expr` provided for the next slot.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( $e:expr $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* $crate::__tail_omittable_wrap_expr!($e, $slot_spec) )
+        )
+    };
+
+    // No provided args left: default remaining slots.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( $(,)* ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            (),
+            ( $($slots),* ),
+            ( $($acc,)* $crate::__tail_omittable_default_for!($slot_spec) )
+        )
+    };
+
+    // Done.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( $(,)* ),
+        (),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@finish
+            $kind,
+            ($($callee)*),
+            ($($req),*),
+            ($($acc),*)
+        )
+    };
+
+    // Too many provided optionals.
+    (@munch
+        $kind:ident,
+        ($($callee:tt)*),
+        ($($req:expr),*),
+        ( $($extra:tt)+ ),
+        (),
+        ( $($acc:expr),* )
+    ) => {
+        compile_error!("too many optional arguments");
+    };
+
+    (@finish
+        method,
+        ($obj:expr, $method:ident),
+        ($($req:expr),*),
+        ($($acc:expr),*)
+    ) => {
+        $obj.$method($($req),*, $($acc),*)
+    };
+
+    (@finish
+        fn,
+        ($func:path),
+        ($($req:expr),*),
+        ($($acc:expr),*)
+    ) => {
+        $func($($req),*, $($acc),*)
+    };
+}
+
 /// Define a free macro that calls a method and supplies trailing "omittable" args.
 ///
 /// An omittable argument type must implement:
@@ -142,178 +345,110 @@ macro_rules! define_tail_optional_macro {
         ($($provided:tt)*),
         ( $($opt_specs:tt),* )
     ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj,
-            $method,
+        $crate::__tail_omittable_munch!(@munch
+            method,
+            ($obj, $method),
             ($($req),*),
             ( $($provided)* ),
             ( $($opt_specs),* ),
             ()
         )
     };
+}
 
-    // Skip any leading commas in the provided stream (handles trailing commas too).
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        (, $($tail:tt)*),
-        ( $($slot_spec:tt),* ),
-        ( $($acc:expr),* )
+/// Define a free macro that calls a free function (or associated function path) and supplies trailing omittable args.
+///
+/// This is the same idea as [`define_tail_optional_macro!`], but there is **no receiver** argument.
+///
+/// Syntax:
+/// ```rust,ignore
+/// define_tail_optional_fn_macro!(
+///     macro_name => path::to::function;
+///     ( req1: Ty1, req2: Ty2, ... )
+///     [ opt1: OmittableTy1, opt2: OmittableTy2 => path::to::conv, ... ]
+/// );
+/// ```
+#[macro_export]
+macro_rules! define_tail_optional_fn_macro {
+    (
+        $(#[$meta:meta])*
+        $mac_name:ident => $func:path ;
+        ( $($req_name:ident : $req_ty:ty),* $(,)? )
+        [ $($opt_name:ident : $opt_ty:ty $(=> $opt_conv:path)?),* $(,)? ]
     ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
+        $crate::define_tail_optional_fn_macro!(@define_generated_macro
+            $(#[$meta])*
+            $mac_name => ($func)
+            ( $($req_name),* )
+            ( $( ( $opt_name : $opt_ty $(=> $opt_conv)? ) ),* )
+        );
+    };
+
+    (@define_generated_macro
+        $(#[$meta:meta])*
+        $mac_name:ident => ($func:path)
+        ( $($req_name:ident),* )
+        ( $($opt_specs:tt),* )
+    ) => {
+        macro_rules! __define_tail_optional_fn_macro_with_dollar {
+            ($d:tt) => {
+                $(#[$meta])*
+                #[macro_export]
+                macro_rules! $mac_name {
+                    ($($d $req_name:expr),*) => {{
+                        $crate::define_tail_optional_fn_macro!(@call
+                            $func,
+                            ( $( $d $req_name ),* ),
+                            (),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                    ($($d $req_name:expr),*,) => {{
+                        $crate::define_tail_optional_fn_macro!(@call
+                            $func,
+                            ( $( $d $req_name ),* ),
+                            (),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                    ($($d $req_name:expr),*, $d( $d provided:tt )+ ) => {{
+                        $crate::define_tail_optional_fn_macro!(@call
+                            $func,
+                            ( $( $d $req_name ),* ),
+                            ( $d( $d provided )+ ),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                    ($($d $req_name:expr),*, $d( $d provided:tt )+ ,) => {{
+                        $crate::define_tail_optional_fn_macro!(@call
+                            $func,
+                            ( $( $d $req_name ),* ),
+                            ( $d( $d provided )+ , ),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                }
+            };
+        }
+
+        __define_tail_optional_fn_macro_with_dollar!($);
+    };
+
+    (@call
+        $func:path,
+        ($($req:expr),*),
+        ($($provided:tt)*),
+        ( $($opt_specs:tt),* )
+    ) => {
+        $crate::__tail_omittable_munch!(@munch
+            fn,
+            ($func),
             ($($req),*),
-            ( $($tail)* ),
-            ( $($slot_spec),* ),
-            ( $($acc),* )
+            ( $($provided)* ),
+            ( $($opt_specs),* ),
+            ()
         )
     };
-
-    // Literal `None` for the next slot is treated like omission.
-    // This must be handled here (token-level), because once it's captured as an
-    // `expr` fragment it becomes opaque and can't be pattern-matched as `None`.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( None $(, $($tail:tt)*)? ),
-        ( $slot_spec:tt $(, $slots:tt)* ),
-        ( $($acc:expr),* )
-    ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
-            ($($req),*),
-            ( $($($tail)*)? ),
-            ( $($slots),* ),
-            ( $($acc,)* $crate::define_tail_optional_macro!(@default_for $slot_spec) )
-        )
-    };
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( (None) $(, $($tail:tt)*)? ),
-        ( $slot_spec:tt $(, $slots:tt)* ),
-        ( $($acc:expr),* )
-    ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
-            ($($req),*),
-            ( $($($tail)*)? ),
-            ( $($slots),* ),
-            ( $($acc,)* $crate::define_tail_optional_macro!(@default_for $slot_spec) )
-        )
-    };
-
-    // `@raw expr` provided for the next slot.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( @raw $e:expr $(, $($tail:tt)*)? ),
-        ( $slot_spec:tt $(, $slots:tt)* ),
-        ( $($acc:expr),* )
-    ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
-            ($($req),*),
-            ( $($($tail)*)? ),
-            ( $($slots),* ),
-            ( $($acc,)* $crate::define_tail_optional_macro!(@wrap_raw $e, $slot_spec) )
-        )
-    };
-
-    // `@raw` must be followed by an expression.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( @raw , $($tail:tt)* ),
-        ( $($slot_spec:tt),* ),
-        ( $($acc:expr),* )
-    ) => {
-        compile_error!("@raw must be followed by an expression");
-    };
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( @raw ),
-        ( $($slot_spec:tt),* ),
-        ( $($acc:expr),* )
-    ) => {
-        compile_error!("@raw must be followed by an expression");
-    };
-
-    // Regular `expr` provided for the next slot.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( $e:expr $(, $($tail:tt)*)? ),
-        ( $slot_spec:tt $(, $slots:tt)* ),
-        ( $($acc:expr),* )
-    ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
-            ($($req),*),
-            ( $($($tail)*)? ),
-            ( $($slots),* ),
-            ( $($acc,)* $crate::define_tail_optional_macro!(@wrap_expr $e, $slot_spec) )
-        )
-    };
-
-    // No provided args left: default remaining slots.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( $(,)* ),
-        ( $slot_spec:tt $(, $slots:tt)* ),
-        ( $($acc:expr),* )
-    ) => {
-        $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
-            ($($req),*),
-            (),
-            ( $($slots),* ),
-            ( $($acc,)* $crate::define_tail_optional_macro!(@none_for $slot_spec) )
-        )
-    };
-
-    // Done.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( $(,)* ),
-        (),
-        ( $($acc:expr),* )
-    ) => {
-        $obj.$method($($req),*, $($acc),*)
-    };
-
-    // Too many provided optionals.
-    (@munch
-        $obj:expr, $method:ident,
-        ($($req:expr),*),
-        ( $($extra:tt)+ ),
-        (),
-        ( $($acc:expr),* )
-    ) => {
-        compile_error!("too many optional arguments");
-    };
-
-    (@wrap_expr $e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
-        ::core::convert::From::from($conv($e))
-    };
-    (@wrap_expr $e:expr, ( $name:ident : $ty:ty )) => {
-        ::core::convert::From::from($e)
-    };
-
-    (@wrap_raw $e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
-        $e
-    };
-    (@wrap_raw $e:expr, ( $name:ident : $ty:ty )) => {
-        $e
-    };
-
-    (@default_for ( $name:ident : $ty:ty => $conv:path )) => { ::core::default::Default::default() };
-    (@default_for ( $name:ident : $ty:ty )) => { ::core::default::Default::default() };
-
-    (@none_for $($t:tt)*) => { $crate::define_tail_optional_macro!(@default_for $($t)*) };
 }
 
 #[cfg(test)]
@@ -387,5 +522,31 @@ mod tests {
         sset!(pico, (7, 8), @raw maybe_color, @raw maybe_sheet).unwrap();
         assert_eq!(pico.last_color, Some(Some(PColor(42))));
         assert_eq!(pico.last_sheet_index, Some(None));
+    }
+
+    fn free_sset(
+        pos: (u32, u32),
+        color: Option<PColor>,
+        sheet_index: Option<usize>,
+    ) -> (Option<(u32, u32)>, Option<Option<PColor>>, Option<Option<usize>>) {
+        (Some(pos), Some(color), Some(sheet_index))
+    }
+
+    define_tail_optional_fn_macro!(
+        free_sset_m => crate::tests::free_sset;
+        (pos: (u32, u32))
+        [color: Option<PColor> => PColor::from, sheet_index: Option<usize>]
+    );
+
+    #[test]
+    fn free_function_macro_works() {
+        let (last_pos, last_color, last_sheet) = free_sset_m!((9, 9), 7u8, 3usize);
+        assert_eq!(last_pos, Some((9, 9)));
+        assert_eq!(last_color, Some(Some(PColor(7))));
+        assert_eq!(last_sheet, Some(Some(3)));
+
+        let (_pos, color, sheet) = free_sset_m!((1, 1), None, None);
+        assert_eq!(color, Some(None));
+        assert_eq!(sheet, Some(None));
     }
 }

@@ -4,4 +4,4 @@ error: @raw must be followed by an expression
 19 |     sset!(pico, (0,0), @raw, None).unwrap();
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = note: this error originates in the macro `$crate::define_tail_optional_macro` which comes from the expansion of the macro `sset` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `$crate::__tail_omittable_munch` which comes from the expansion of the macro `sset` (in Nightly builds, run with -Z macro-backtrace for more info)
