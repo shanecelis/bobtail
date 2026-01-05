@@ -1,4 +1,4 @@
-use tail_optional_macros::define_tail_optional_macro;
+use bobtail::define_tail_optional_macro;
 
 #[derive(Clone, Copy, Debug)]
 struct PColor(u8);

@@ -1,18 +1,18 @@
 [package]
-name = "tail_optional_macros"
+name = "bobtail"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "macro_rules! generator for methods with trailing Option<T> parameters (auto Some, None, @raw escape, per-arg conversion)."
 
 [workspace]
-members = ["tail_optional_macros_macros"]
+members = ["bobtail_proc"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-tail_optional_macros_macros = { path = "tail_optional_macros_macros" }
+bobtail_proc = { path = "bobtail_proc" }
 
 [dev-dependencies]
 trybuild = "1"

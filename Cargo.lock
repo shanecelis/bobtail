@@ -3,6 +3,24 @@
 version = 4
 
 [[package]]
+name = "bobtail"
+version = "0.1.0"
+dependencies = [
+ "bobtail_proc",
+ "trybuild",
+]
+
+[[package]]
+name = "bobtail_proc"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -140,24 +158,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tail_optional_macros"
-version = "0.1.0"
-dependencies = [
- "tail_optional_macros_macros",
- "trybuild",
-]
-
-[[package]]
-name = "tail_optional_macros_macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

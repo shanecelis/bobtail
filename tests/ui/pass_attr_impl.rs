@@ -1,5 +1,4 @@
-use tail_optional_macros as tail_omittable; // enables #[tail_omittable::block]
-use tail_optional_macros::tail_omittable; // enables #[tail_omittable]
+use bobtail;
 
 #[derive(Clone, Copy)]
 struct PColor(u8);
@@ -10,12 +9,14 @@ impl From<u8> for PColor {
 #[derive(Default)]
 struct Pico8;
 
-#[tail_omittable::block]
+#[bobtail::block]
 impl Pico8 {
-    #[tail_omittable(conv(color(PColor::from)))]
+    #[bobtail::bob]
     fn sset(
         &mut self,
         pos: (u32, u32),
+        #[bobtail::tail]
+        #[bobtail::map(PColor::from)]
         color: Option<PColor>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()> {

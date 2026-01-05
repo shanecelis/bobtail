@@ -14,8 +14,8 @@
 //! - `@raw expr` escape hatch passes `expr` through unchanged (useful for passing a pre-built `Option<T>`, etc.)
 //! - Per-optional-arg pre-conversion hook: `name: Ty => path::to::conv` uses `T::from(conv(expr))`
 
-pub use tail_optional_macros_macros::tail_omittable;
-pub use tail_optional_macros_macros::block;
+pub use bobtail_proc::block;
+pub use bobtail_proc::bob;
 
 /// Wrap an expression into `Some(...)`, with support for `None` and `@raw` passthrough.
 ///

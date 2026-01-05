@@ -1,4 +1,4 @@
-# tail_optional_macros
+# bobtail
 
 `macro_rules!` generator for methods with trailing `Option<T>` parameters.
 
@@ -17,25 +17,25 @@ cargo run --example demo
 
 This crate includes optional proc-macro attributes (via a workspace member) to generate the `macro_rules!` wrappers for you.
 
-- `#[tail_omittable::block]`: attach to an `impl` block
-- `#[tail_omittable(...)]`: attach to each method you want a macro for
+- `#[bobtail::block]`: attach to an `impl` block
+- `#[bobtail::bob]`: attach to each method you want a macro for (optional rename: `#[bobtail::bob(my_macro)]`)
+- `#[bobtail::tail]`: attach to the first tail-omittable parameter
+- `#[bobtail::map(path::to::conv)]`: optional conversion hook for a parameter (only meaningful on tail params)
 
 Example:
 
 ```rust,ignore
-use tail_optional_macros as tail_omittable; // enables #[tail_omittable::block]
-use tail_optional_macros::tail_omittable;  // enables #[tail_omittable]
+use bobtail;
 
-#[tail_omittable::block]
+#[bobtail::block]
 impl Pico8 {
     // default: first non-receiver arg is required; remaining args are tail-omittable
-    #[tail_omittable(conv(color(PColor::from)))]
-    fn sset(&mut self, pos: (u32,u32), color: Option<PColor>, sheet_index: Option<usize>) -> Result<(), ()> {
+    #[bobtail::bob]
+    fn sset(&mut self, pos: (u32,u32), #[bobtail::tail] #[bobtail::map(PColor::from)] color: Option<PColor>, sheet_index: Option<usize>) -> Result<(), ()> {
         Ok(())
     }
 }
 ```
 
-### Why `#[tail_omittable::conv(...)]` on the parameter isn't supported
-
-Custom namespaced helper attributes on parameters (like `#[tail_omittable::conv(...)]`) are **not stable** in Rust, so the conversion mapping is provided on the method attribute instead via `conv(...)`.
+### Note
+These `#[bobtail::tail]` / `#[bobtail::map(...)]` parameter markers are *consumed and stripped* by `#[bobtail::block]` during macro expansion.
