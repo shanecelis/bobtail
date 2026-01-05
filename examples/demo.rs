@@ -31,12 +31,12 @@ define_tail_optional_macro!(
 fn main() -> Result<(), ()> {
     let mut pico = Pico8::default();
 
-    sset!(pico, (0, 0));
-    sset!(pico, (1, 2), 3u8);
-    sset!(pico, (3, 4), None, 7usize);
+    sset!(pico, (0, 0))?;
+    sset!(pico, (1, 2), 3u8)?;
+    sset!(pico, (3, 4), None, 7usize)?;
 
     let maybe_color: Option<PColor> = Some(PColor(9));
-    sset!(pico, (5, 6), @raw maybe_color, None);
+    sset!(pico, (5, 6), @raw maybe_color, None)?;
 
     Ok(())
 }

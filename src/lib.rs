@@ -23,6 +23,7 @@
 macro_rules! __opt {
     (@raw $e:expr) => { $e };
     (None) => { None };
+    ((None)) => { None };
     ($e:expr) => { Some($e) };
 }
 
@@ -35,6 +36,7 @@ macro_rules! __opt {
 macro_rules! __opt_conv {
     (@raw $e:expr, $conv:path) => { $e };
     (None, $conv:path) => { None };
+    ((None), $conv:path) => { None };
     ($e:expr, $conv:path) => { Some($conv($e)) };
 }
 
@@ -62,64 +64,197 @@ macro_rules! define_tail_optional_macro {
         $(#[$meta:meta])*
         $mac_name:ident => $method:ident
         ( $($req_name:ident : $req_ty:ty),* $(,)? )
-        [ $($opt_spec:tt),* $(,)? ]
+        [ $($opt_name:ident : $opt_ty:ty $(=> $opt_conv:path)?),* $(,)? ]
     ) => {
-        $(#[$meta])*
-        #[macro_export]
-        macro_rules! $mac_name {
-            ($obj:expr, $($req:expr),* $(, $($opt:tt),* )? $(,)?) => {{
-                $crate::define_tail_optional_macro!(@call
-                    $obj, $method,
-                    ($($req),*),
-                    ( $($($opt),*)? ),
-                    ( $($opt_spec),* )
-                )
-            }};
+        $crate::define_tail_optional_macro!(@define_generated_macro
+            $(#[$meta])*
+            $mac_name => $method
+            ( $($req_name),* )
+            ( $( ( $opt_name : $opt_ty $(=> $opt_conv)? ) ),* )
+        );
+    };
+
+    (@define_generated_macro
+        $(#[$meta:meta])*
+        $mac_name:ident => $method:ident
+        ( $($req_name:ident),* )
+        ( $($opt_specs:tt),* )
+    ) => {
+        macro_rules! __define_tail_optional_macro_with_dollar {
+            ($d:tt) => {
+                $(#[$meta])*
+                #[macro_export]
+                macro_rules! $mac_name {
+                    // Exactly the required args (no optionals).
+                    ($d obj:expr $(, $d $req_name:expr )* ) => {{
+                        $crate::define_tail_optional_macro!(@call
+                            $d obj, $method,
+                            ( $( $d $req_name ),* ),
+                            (),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                    ($d obj:expr $(, $d $req_name:expr )* ,) => {{
+                        $crate::define_tail_optional_macro!(@call
+                            $d obj, $method,
+                            ( $( $d $req_name ),* ),
+                            (),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+
+                    // Required args + optional tail args.
+                    ($d obj:expr $(, $d $req_name:expr )* , $d( $d provided:tt )+ ) => {{
+                        $crate::define_tail_optional_macro!(@call
+                            $d obj, $method,
+                            ( $( $d $req_name ),* ),
+                            ( $d( $d provided )+ ),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                    ($d obj:expr $(, $d $req_name:expr )* , $d( $d provided:tt )+ ,) => {{
+                        $crate::define_tail_optional_macro!(@call
+                            $d obj, $method,
+                            ( $( $d $req_name ),* ),
+                            ( $d( $d provided )+ , ),
+                            ( $($opt_specs),* )
+                        )
+                    }};
+                }
+            };
         }
+
+        __define_tail_optional_macro_with_dollar!($);
     };
 
-    (@call $obj:expr, $method:ident, ($($req:expr),*), (), ()) => {
-        $obj.$method($($req),*)
-    };
-
-    (@call $obj:expr, $method:ident, ($($req:expr),*), (), ($($opt_spec:tt),+)) => {
-        $obj.$method(
-            $($req),*,
-            $($crate::define_tail_optional_macro!(@none_for $opt_spec)),+
-        )
-    };
-
-    (@call $obj:expr, $method:ident, ($($req:expr),*), ($($provided:tt),+), ($($opt_spec:tt),+)) => {
+    (@call
+        $obj:expr,
+        $method:ident,
+        ($($req:expr),*),
+        ($($provided:tt)*),
+        ( $($opt_specs:tt),* )
+    ) => {
         $crate::define_tail_optional_macro!(@munch
-            $obj, $method,
+            $obj,
+            $method,
             ($($req),*),
-            ($($provided),+),
-            ($($opt_spec),+),
+            ( $($provided)* ),
+            ( $($opt_specs),* ),
             ()
         )
     };
 
+    // Skip any leading commas in the provided stream (handles trailing commas too).
     (@munch
         $obj:expr, $method:ident,
         ($($req:expr),*),
-        ($head:tt $(, $tail:tt)*),
-        ($slot_spec:tt $(, $slots:tt)*),
+        (, $($tail:tt)*),
+        ( $($slot_spec:tt),* ),
         ( $($acc:expr),* )
     ) => {
         $crate::define_tail_optional_macro!(@munch
             $obj, $method,
             ($($req),*),
-            ( $($tail),* ),
-            ( $($slots),* ),
-            ( $($acc,)* $crate::define_tail_optional_macro!(@wrap $head, $slot_spec) )
+            ( $($tail)* ),
+            ( $($slot_spec),* ),
+            ( $($acc),* )
         )
     };
 
+    // Literal `None` for the next slot. This must be handled here (token-level),
+    // because once it's captured as an `expr` fragment it becomes opaque and
+    // can't be pattern-matched as `None` by downstream macros.
     (@munch
         $obj:expr, $method:ident,
         ($($req:expr),*),
-        (),
-        ($slot_spec:tt $(, $slots:tt)*),
+        ( None $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::define_tail_optional_macro!(@munch
+            $obj, $method,
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* None )
+        )
+    };
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( (None) $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::define_tail_optional_macro!(@munch
+            $obj, $method,
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* None )
+        )
+    };
+
+    // `@raw expr` provided for the next slot.
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( @raw $e:expr $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::define_tail_optional_macro!(@munch
+            $obj, $method,
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* $crate::define_tail_optional_macro!(@wrap_raw $e, $slot_spec) )
+        )
+    };
+
+    // `@raw` must be followed by an expression.
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( @raw , $($tail:tt)* ),
+        ( $($slot_spec:tt),* ),
+        ( $($acc:expr),* )
+    ) => {
+        compile_error!("@raw must be followed by an expression");
+    };
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( @raw ),
+        ( $($slot_spec:tt),* ),
+        ( $($acc:expr),* )
+    ) => {
+        compile_error!("@raw must be followed by an expression");
+    };
+
+    // Regular `expr` provided for the next slot.
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( $e:expr $(, $($tail:tt)*)? ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
+        ( $($acc:expr),* )
+    ) => {
+        $crate::define_tail_optional_macro!(@munch
+            $obj, $method,
+            ($($req),*),
+            ( $($($tail)*)? ),
+            ( $($slots),* ),
+            ( $($acc,)* $crate::define_tail_optional_macro!(@wrap_expr $e, $slot_spec) )
+        )
+    };
+
+    // No provided args left: default remaining slots to None.
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( $(,)* ),
+        ( $slot_spec:tt $(, $slots:tt)* ),
         ( $($acc:expr),* )
     ) => {
         $crate::define_tail_optional_macro!(@munch
@@ -131,26 +266,44 @@ macro_rules! define_tail_optional_macro {
         )
     };
 
+    // Done.
     (@munch
         $obj:expr, $method:ident,
         ($($req:expr),*),
-        (),
+        ( $(,)* ),
         (),
         ( $($acc:expr),* )
     ) => {
         $obj.$method($($req),*, $($acc),*)
     };
 
-    (@wrap $arg:tt, $name:ident : $ty:ty => $conv:path) => {
-        $crate::__opt_conv!($arg, $conv)
+    // Too many provided optionals.
+    (@munch
+        $obj:expr, $method:ident,
+        ($($req:expr),*),
+        ( $($extra:tt)+ ),
+        (),
+        ( $($acc:expr),* )
+    ) => {
+        compile_error!("too many optional arguments");
     };
 
-    (@wrap $arg:tt, $name:ident : $ty:ty) => {
-        $crate::__opt!($arg)
+    (@wrap_expr $e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
+        $crate::__opt_conv!($e, $conv)
+    };
+    (@wrap_expr $e:expr, ( $name:ident : $ty:ty )) => {
+        $crate::__opt!($e)
     };
 
-    (@none_for $name:ident : $ty:ty => $conv:path) => { None };
-    (@none_for $name:ident : $ty:ty) => { None };
+    (@wrap_raw $e:expr, ( $name:ident : $ty:ty => $conv:path )) => {
+        $crate::__opt_conv!(@raw $e, $conv)
+    };
+    (@wrap_raw $e:expr, ( $name:ident : $ty:ty )) => {
+        $crate::__opt!(@raw $e)
+    };
+
+    (@none_for ( $name:ident : $ty:ty => $conv:path )) => { None };
+    (@none_for ( $name:ident : $ty:ty )) => { None };
 }
 
 #[cfg(test)]
