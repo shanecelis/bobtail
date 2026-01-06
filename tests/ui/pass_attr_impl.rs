@@ -16,7 +16,6 @@ impl Pico8 {
         &mut self,
         pos: (u32, u32),
         #[bobtail::tail]
-        #[bobtail::map(PColor::from)]
         color: Option<PColor>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()> {
@@ -28,8 +27,8 @@ impl Pico8 {
 fn main() {
     let mut pico = Pico8::default();
     sset!(pico, (0, 0)).unwrap();
-    sset!(pico, (1, 2), 7u8).unwrap();
-    sset!(pico, (3, 4), None, 9usize).unwrap();
+    sset!(pico, (1, 2), PColor(7u8)).unwrap();
+    sset!(pico, (3, 4), _, 9usize).unwrap();
 }
 
 

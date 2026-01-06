@@ -18,7 +18,6 @@ define_tail_optional_macro!(
         &mut self,
         pos: (u32, u32),
         #[tail]
-        #[map(PColor::from)]
         color: Option<PColor>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()>;
@@ -27,5 +26,5 @@ define_tail_optional_macro!(
 fn main() {
     let mut pico = Pico8;
     let maybe_color: Option<PColor> = None;
-    sset!(pico, (0,0), @raw maybe_color, None).unwrap();
+    sset!(pico, (0,0), maybe_color, _).unwrap();
 }
