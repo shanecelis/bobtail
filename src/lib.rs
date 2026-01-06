@@ -16,9 +16,9 @@
 
 extern crate self as bobtail;
 
-pub use bobtail_proc::block;
-pub use bobtail_proc::bob;
-pub use bobtail_proc::define;
+pub use bobtail_proc_macros::block;
+pub use bobtail_proc_macros::bob;
+pub use bobtail_proc_macros::define;
 
 #[doc(hidden)]
 #[macro_export]

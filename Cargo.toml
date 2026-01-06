@@ -6,13 +6,13 @@ license = "MIT OR Apache-2.0"
 description = "Macro generator for functions with trailing `Default` and `From<T>` parameters"
 
 [workspace]
-members = ["bobtail_proc"]
+members = ["bobtail_proc_macros"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-bobtail_proc = { path = "bobtail_proc" }
+bobtail_proc_macros = { path = "bobtail_proc_macros" }
 
 [dev-dependencies]
 trybuild = "1"
