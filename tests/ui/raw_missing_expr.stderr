@@ -1,7 +1,0 @@
-error: @raw must be followed by an expression
-  --> tests/ui/raw_missing_expr.rs:23:5
-   |
-23 |     sset!(pico, (0,0), @raw, None).unwrap();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: this error originates in the macro `$crate::__tail_omittable_munch` which comes from the expansion of the macro `sset` (in Nightly builds, run with -Z macro-backtrace for more info)

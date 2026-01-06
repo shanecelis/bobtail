@@ -13,13 +13,9 @@ use syn::{
     ImplItem,
     ImplItemMethod,
     Item,
-    Lit,
     Meta,
-    MetaList,
-    MetaNameValue,
     NestedMeta,
     Pat,
-    PatIdent,
     Path,
     Result,
     Token,
@@ -41,18 +37,13 @@ fn bobtail_path() -> Result<proc_macro2::TokenStream> {
 struct MethodSpec {
     method: Ident,
     macro_name: Option<Ident>,
-    required: Option<usize>,
     conv: Vec<(Ident, Path)>,
 }
 
 impl MethodSpec {
     fn new(method: Ident) -> Self {
-        Self { method, macro_name: None, required: None, conv: Vec::new() }
+        Self { method, macro_name: None, conv: Vec::new() }
     }
-}
-
-fn strip_tail_omittable_attr(attrs: &mut Vec<Attribute>) {
-    attrs.retain(|a| !a.path.is_ident("tail_omittable"));
 }
 
 fn strip_block_attr(attrs: &mut Vec<Attribute>) {
@@ -75,19 +66,6 @@ fn is_bob_attr(a: &Attribute) -> bool {
     path_last_ident(&a.path).is_some_and(|id| id == "bob")
 }
 
-fn typed_args_after_receiver(sig: &syn::Signature) -> Vec<(&PatIdent, &syn::Type)> {
-    sig.inputs
-        .iter()
-        .filter_map(|arg| match arg {
-            syn::FnArg::Receiver(_) => None,
-            syn::FnArg::Typed(pat_ty) => {
-                let Pat::Ident(pat_ident) = pat_ty.pat.as_ref() else { return None };
-                Some((pat_ident, pat_ty.ty.as_ref()))
-            }
-        })
-        .collect()
-}
-
 fn receiver_tokens(sig: &syn::Signature) -> Option<proc_macro2::TokenStream> {
     let syn::FnArg::Receiver(r) = sig.inputs.iter().next()? else {
         return None;
@@ -108,64 +86,6 @@ fn parse_attr_args(attr: &Attribute) -> Result<Vec<NestedMeta>> {
     let punct: Punctuated<NestedMeta, Token![,]> =
         attr.parse_args_with(Punctuated::<NestedMeta, Token![,]>::parse_terminated)?;
     Ok(punct.into_iter().collect())
-}
-
-fn generate_define_for_method(
-    crate_path: proc_macro2::TokenStream,
-    receiver: Option<proc_macro2::TokenStream>,
-    type_params: &[(&PatIdent, &syn::Type)],
-    method: &Ident,
-    spec: &MethodSpec,
-) -> Result<proc_macro2::TokenStream> {
-    let macro_name = spec.macro_name.clone().unwrap_or_else(|| spec.method.clone());
-    let required = spec.required.unwrap_or(1);
-
-    if type_params.len() < required {
-        return Err(Error::new(
-            method.span(),
-            format!("required={required} but method has only {} non-receiver parameters", type_params.len()),
-        ));
-    }
-
-    let (req, opt) = type_params.split_at(required);
-
-    let mut conv_map = std::collections::HashMap::<String, Path>::new();
-    for (arg, p) in &spec.conv {
-        conv_map.insert(arg.to_string(), p.clone());
-    }
-
-    let mut proto_params: Vec<proc_macro2::TokenStream> = Vec::new();
-    if let Some(rcv) = receiver {
-        proto_params.push(quote!(#rcv,));
-    }
-    for (pat, ty) in req {
-        let name = &pat.ident;
-        proto_params.push(quote!(#name : #ty,));
-    }
-    if let Some(((first_pat, first_ty), rest)) = opt.split_first() {
-        let name = &first_pat.ident;
-        if let Some(conv) = conv_map.get(&name.to_string()) {
-            proto_params.push(quote!(#[tail] #[map(#conv)] #name : #first_ty,));
-        } else {
-            proto_params.push(quote!(#[tail] #name : #first_ty,));
-        }
-        for (pat, ty) in rest {
-            let name = &pat.ident;
-            if let Some(conv) = conv_map.get(&name.to_string()) {
-                proto_params.push(quote!(#[map(#conv)] #name : #ty,));
-            } else {
-                proto_params.push(quote!(#name : #ty,));
-            }
-        }
-    }
-
-    Ok(quote! {
-        #crate_path::define_tail_optional_macro!(
-            #macro_name => fn #method(
-                #(#proto_params)*
-            );
-        );
-    })
 }
 
 /// Method marker/config attribute (no-op).
@@ -193,7 +113,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     match parsed {
         Item::Impl(mut item_impl) => {
-            let mut generated = Vec::<proc_macro2::TokenStream>::new();
+            let mut items = Vec::<proc_macro2::TokenStream>::new();
 
             for it in &item_impl.items {
                 let ImplItem::Method(method_fn) = it else { continue };
@@ -221,45 +141,67 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
 
-                // Determine required vs tail based on the first parameter marked `#[bobtail::tail]`.
-                let mut tail_index: Option<usize> = None;
-                let mut conv: Vec<(Ident, Path)> = Vec::new();
-                let mut typed: Vec<(&PatIdent, &syn::Type)> = Vec::new();
+                let Some(receiver) = receiver_tokens(&method_fn.sig) else {
+                    return Error::new(method_fn.sig.span(), "bobtail::block currently requires a self receiver").to_compile_error().into();
+                };
 
-                for (i, arg) in method_fn
-                    .sig
-                    .inputs
-                    .iter()
-                    .filter_map(|a| match a {
-                        syn::FnArg::Receiver(_) => None,
-                        syn::FnArg::Typed(p) => Some(p),
-                    })
-                    .enumerate()
-                {
-                    let Pat::Ident(pat_ident) = arg.pat.as_ref() else { continue };
-                    typed.push((pat_ident, arg.ty.as_ref()));
+                // Build prototype params by largely reusing the method signature + markers.
+                let mut proto_params: Vec<proc_macro2::TokenStream> = Vec::new();
+                proto_params.push(quote!(#receiver,));
 
-                    if tail_index.is_none() && arg.attrs.iter().any(is_tail_attr) {
-                        tail_index = Some(i);
-                    }
-                    for a in &arg.attrs {
+                // Track the first #[bobtail::tail] to emit #[tail] exactly once.
+                let mut tail_started = false;
+
+                for arg in method_fn.sig.inputs.iter().skip(1) {
+                    let syn::FnArg::Typed(pat_ty) = arg else { continue };
+                    let Pat::Ident(pat_ident) = pat_ty.pat.as_ref() else {
+                        return Error::new(pat_ty.pat.span(), "bobtail only supports ident parameters").to_compile_error().into();
+                    };
+                    let name = &pat_ident.ident;
+                    let ty = pat_ty.ty.as_ref();
+
+                    let has_tail = pat_ty.attrs.iter().any(is_tail_attr);
+                    let mut map_paths: Vec<Path> = Vec::new();
+                    for a in &pat_ty.attrs {
                         if is_map_attr(a) {
                             let p: Path = match a.parse_args() {
                                 Ok(p) => p,
                                 Err(e) => return e.to_compile_error().into(),
                             };
-                            conv.push((pat_ident.ident.clone(), p));
+                            map_paths.push(p);
                         }
                     }
+
+                    let mut markers: Vec<proc_macro2::TokenStream> = Vec::new();
+                    if has_tail && !tail_started {
+                        markers.push(quote!(#[tail]));
+                        tail_started = true;
+                    }
+                    for p in map_paths {
+                        markers.push(quote!(#[map(#p)]));
+                        spec.conv.push((name.clone(), p));
+                    }
+
+                    proto_params.push(quote!(#(#markers)* #name : #ty,));
                 }
 
-                spec.required = Some(tail_index.unwrap_or(typed.len()));
-                spec.conv = conv;
+                let out_ty = match &method_fn.sig.output {
+                    syn::ReturnType::Default => None,
+                    syn::ReturnType::Type(_, ty) => Some(ty.as_ref()),
+                };
 
-                let receiver = receiver_tokens(&method_fn.sig);
-                match generate_define_for_method(crate_path.clone(), receiver, &typed, &spec.method, &spec) {
-                    Ok(ts) => generated.push(ts),
-                    Err(e) => return e.to_compile_error().into(),
+                // Emit as a tail_define item (method prototype).
+                let method = &spec.method;
+                if let Some(mac) = &spec.macro_name {
+                    if let Some(ret) = out_ty {
+                        items.push(quote!(#mac => fn #method( #(#proto_params)* ) -> #ret;));
+                    } else {
+                        items.push(quote!(#mac => fn #method( #(#proto_params)* );));
+                    }
+                } else if let Some(ret) = out_ty {
+                    items.push(quote!(fn #method( #(#proto_params)* ) -> #ret;));
+                } else {
+                    items.push(quote!(fn #method( #(#proto_params)* );));
                 }
             }
 
@@ -275,9 +217,15 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             strip_block_attr(&mut item_impl.attrs);
 
+            let tail_define_block = if items.is_empty() {
+                quote!()
+            } else {
+                quote!(#crate_path::tail_define!( #(#items)* );)
+            };
+
             let out = quote! {
                 #item_impl
-                #(#generated)*
+                #tail_define_block
             };
             out.into()
         }
