@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Span};
+use proc_macro2::Span;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{
@@ -10,13 +10,13 @@ use syn::{
     spanned::Spanned,
     Attribute,
     Error,
+    Ident,
     ImplItem,
     ImplItemMethod,
     Item,
     Meta,
     NestedMeta,
     Pat,
-    Path,
     Result,
     Token,
 };
@@ -25,7 +25,10 @@ fn bobtail_path() -> Result<proc_macro2::TokenStream> {
     let found = crate_name("bobtail")
         .map_err(|e| Error::new(Span::call_site(), format!("proc-macro-crate error: {e}")))?;
     Ok(match found {
-        FoundCrate::Itself => quote!(crate),
+        // We want a path that works even when this proc-macro is invoked from a
+        // binary target in the same package (examples), where `crate` would
+        // refer to the binary crate, not the library crate.
+        FoundCrate::Itself => quote!(::bobtail),
         FoundCrate::Name(name) => {
             let ident = Ident::new(&name, Span::call_site());
             quote!(::#ident)
@@ -37,12 +40,13 @@ fn bobtail_path() -> Result<proc_macro2::TokenStream> {
 struct MethodSpec {
     method: Ident,
     macro_name: Option<Ident>,
-    conv: Vec<(Ident, Path)>,
+    // conv: Vec<(Ident, Path)>,
 }
 
 impl MethodSpec {
     fn new(method: Ident) -> Self {
-        Self { method, macro_name: None, conv: Vec::new() }
+        Self { method, macro_name: None, //conv: Vec::new()
+        }
     }
 }
 
@@ -161,26 +165,26 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let ty = pat_ty.ty.as_ref();
 
                     let has_tail = pat_ty.attrs.iter().any(is_tail_attr);
-                    let mut map_paths: Vec<Path> = Vec::new();
-                    for a in &pat_ty.attrs {
-                        if is_map_attr(a) {
-                            let p: Path = match a.parse_args() {
-                                Ok(p) => p,
-                                Err(e) => return e.to_compile_error().into(),
-                            };
-                            map_paths.push(p);
-                        }
-                    }
+                    // let mut map_paths: Vec<Path> = Vec::new();
+                    // for a in &pat_ty.attrs {
+                    //     if is_map_attr(a) {
+                    //         let p: Path = match a.parse_args() {
+                    //             Ok(p) => p,
+                    //             Err(e) => return e.to_compile_error().into(),
+                    //         };
+                    //         map_paths.push(p);
+                    //     }
+                    // }
 
                     let mut markers: Vec<proc_macro2::TokenStream> = Vec::new();
                     if has_tail && !tail_started {
                         markers.push(quote!(#[tail]));
                         tail_started = true;
                     }
-                    for p in map_paths {
-                        markers.push(quote!(#[map(#p)]));
-                        spec.conv.push((name.clone(), p));
-                    }
+                    // for p in map_paths {
+                    //     markers.push(quote!(#[map(#p)]));
+                    //     spec.conv.push((name.clone(), p));
+                    // }
 
                     proto_params.push(quote!(#(#markers)* #name : #ty,));
                 }
@@ -233,6 +237,177 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
             .to_compile_error()
             .into(),
     }
+}
+
+// ---- tail_define proc macro (prototype -> macro_rules wrapper generator) ----
+
+fn is_tail_marker(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(is_tail_attr)
+}
+
+#[derive(Debug)]
+struct ProtoItem {
+    outer_attrs: Vec<Attribute>,
+    macro_name: Ident,
+    fn_name: Ident,
+    has_receiver: bool,
+    req_count: usize,
+    tail_count: usize,
+}
+
+impl syn::parse::Parse for ProtoItem {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let outer_attrs = input.call(Attribute::parse_outer)?;
+
+        // Optional: `mac_name =>`
+        let mut macro_name: Option<Ident> = None;
+        if input.peek(Ident) {
+            let fork = input.fork();
+            let _maybe: Ident = fork.parse()?;
+            if fork.peek(Token![=>]) {
+                let mac: Ident = input.parse()?;
+                input.parse::<Token![=>]>()?;
+                macro_name = Some(mac);
+            }
+        }
+
+        input.parse::<Token![fn]>()?;
+        let fn_name: Ident = input.parse()?;
+
+        let content;
+        syn::parenthesized!(content in input);
+        let args: Punctuated<syn::FnArg, Token![,]> =
+            content.parse_terminated(syn::FnArg::parse)?;
+
+        let mut has_receiver = false;
+        let mut typed: Vec<syn::PatType> = Vec::new();
+        for (i, a) in args.into_iter().enumerate() {
+            match a {
+                syn::FnArg::Receiver(_) => {
+                    if i != 0 {
+                        return Err(Error::new(fn_name.span(), "receiver must be the first parameter"));
+                    }
+                    has_receiver = true;
+                }
+                syn::FnArg::Typed(p) => typed.push(p),
+            }
+        }
+
+        // Find the first #[tail] marker (if any).
+        let mut tail_start: Option<usize> = None;
+        for (i, p) in typed.iter().enumerate() {
+            if is_tail_marker(&p.attrs) {
+                tail_start = Some(i);
+                break;
+            }
+        }
+
+        let req_count = match tail_start {
+            Some(i) => i,
+            None => typed.len(),
+        };
+        let tail_count = match tail_start {
+            Some(i) => typed.len().saturating_sub(i),
+            None => 0,
+        };
+
+        // Parse optional return type (ignored) then require semicolon.
+        if input.peek(Token![->]) {
+            input.parse::<Token![->]>()?;
+            let _ty: syn::Type = input.parse()?;
+        }
+        input.parse::<Token![;]>()?;
+
+        Ok(Self {
+            outer_attrs,
+            macro_name: macro_name.unwrap_or_else(|| fn_name.clone()),
+            fn_name,
+            has_receiver,
+            req_count,
+            tail_count,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct TailDefineInput {
+    items: Vec<ProtoItem>,
+}
+
+impl syn::parse::Parse for TailDefineInput {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let mut items = Vec::new();
+        while !input.is_empty() {
+            items.push(input.parse::<ProtoItem>()?);
+        }
+        Ok(Self { items })
+    }
+}
+
+fn tail_define_impl(input: TokenStream) -> TokenStream {
+    let crate_path = match bobtail_path() {
+        Ok(p) => p,
+        Err(e) => return e.to_compile_error().into(),
+    };
+
+    let parsed: TailDefineInput = parse_macro_input!(input as TailDefineInput);
+    let mut out = proc_macro2::TokenStream::new();
+
+    for item in parsed.items {
+        let ProtoItem {
+            outer_attrs,
+            macro_name,
+            fn_name,
+            has_receiver,
+            req_count,
+            tail_count,
+        } = item;
+
+        let recv_tok = if has_receiver {
+            quote!(receiver)
+        } else {
+            quote!(no_receiver)
+        };
+
+        let req_idents: Vec<Ident> = (0..req_count)
+            .map(|i| Ident::new(&format!("__bobtail_req_{i}"), Span::call_site()))
+            .collect();
+        let tail_idents: Vec<Ident> = (0..tail_count)
+            .map(|i| Ident::new(&format!("__bobtail_tail_{i}"), Span::call_site()))
+            .collect();
+
+        out.extend(quote! {
+            #(#outer_attrs)*
+            macro_rules! #macro_name {
+                ($($call:tt)*) => {
+                    #crate_path::__tail_omittable_munch!(
+                        #fn_name,
+                        #recv_tok,
+                        ( #(#req_idents,)* ),
+                        ( #(#tail_idents,)* );
+                        $($call)*
+                    )
+                };
+            }
+        });
+    }
+
+    out.into()
+}
+
+#[proc_macro]
+pub fn tail_define(input: TokenStream) -> TokenStream {
+    tail_define_impl(input)
+}
+
+#[proc_macro]
+pub fn define_tail_optional_macro(input: TokenStream) -> TokenStream {
+    tail_define_impl(input)
+}
+
+#[proc_macro]
+pub fn define_tail(input: TokenStream) -> TokenStream {
+    tail_define_impl(input)
 }
 
 

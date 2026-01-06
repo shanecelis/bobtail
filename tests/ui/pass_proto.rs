@@ -1,4 +1,4 @@
-use bobtail::define_tail_optional_macro;
+use bobtail::define_tail;
 
 #[derive(Clone, Copy)]
 struct PColor(u8);
@@ -13,12 +13,11 @@ impl Pico8 {
     }
 }
 
-define_tail_optional_macro!(
+define_tail!(
     sset /* new macro name */ => fn sset(
         &mut self,
         pos: (u32, u32),
         #[tail]
-        #[map(PColor::from)]
         color: Option<PColor>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()>;
@@ -27,7 +26,7 @@ define_tail_optional_macro!(
 fn main() {
     let mut pico = Pico8;
     sset!(pico, (0, 0)).unwrap();
-    sset!(pico, (1, 2), 7u8).unwrap();
+    sset!(pico, (1, 2), PColor(7u8)).unwrap();
     sset!(pico, (3, 4), None, 9usize).unwrap();
 }
 

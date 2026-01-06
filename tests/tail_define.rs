@@ -34,7 +34,7 @@ fn prnt(_pos: (u32, u32), _color: Option<PColor>, input: MyInput) -> MyInput {
 }
 
 // Define macros individually (separate invocations)
-tail_define!(
+tail_define! {
     sset_macro_one => fn sset(
         &mut self,
         pos: (u32, u32),
@@ -42,9 +42,9 @@ tail_define!(
         color: Option<PColor>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()>;
-);
+}
 
-tail_define!(
+tail_define! {
     // implicit macro name == function name
     fn sspr(
         &mut self,
@@ -52,9 +52,9 @@ tail_define!(
         #[tail]
         color: Option<PColor>,
     ) -> Result<(), ()>;
-);
+}
 
-tail_define!(
+tail_define! {
     // implicit macro name == function name
     fn prnt(
         pos: (u32, u32),
@@ -62,10 +62,10 @@ tail_define!(
         color: Option<PColor>,
         _input: MyInput,
     );
-);
+}
 
 // Define macros all together (single invocation) with distinct macro names to avoid redefinitions
-tail_define!(
+tail_define! {
     sset_macro_all => fn sset(
         &mut self,
         pos: (u32, u32),
@@ -93,7 +93,7 @@ tail_define!(
         color: Option<PColor>,
         _input: MyInput,
     );
-);
+}
 
 #[test]
 fn tail_define_individual_method_with_explicit_macro_name() {
@@ -119,7 +119,7 @@ fn tail_define_individual_free_function() {
     assert_eq!(prnt!((0, 0), PColor(7)), x);
     assert_eq!(prnt!((0, 0), PColor(7), 8u8), MyInput(8));
     assert_eq!(prnt!((0, 0), PColor(7), MyInput(9)), MyInput(9));
-    assert_eq!(prnt_all!((0, 0), PColor(7), MyInput(9)), MyInput(10));
+    assert_eq!(prnt_all!((0, 0), PColor(7), MyInput(9)), MyInput(9));
     assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
     assert_eq!(prnt_all!((0, 0), PColor(7), Default::default()), MyInput(0));
     assert_eq!(prnt_any!((0, 0), Some(PColor(7)), Default::default()), MyInput(0));

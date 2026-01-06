@@ -1,4 +1,4 @@
-use bobtail::define_tail_optional_macro;
+use bobtail::define_tail;
 
 struct Pico8;
 impl Pico8 {
@@ -7,7 +7,7 @@ impl Pico8 {
     }
 }
 
-define_tail_optional_macro!(
+define_tail!(
     sset => fn sset(
         &mut self,
         pos: (u32, u32),

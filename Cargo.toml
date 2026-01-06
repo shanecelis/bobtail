@@ -3,7 +3,7 @@ name = "bobtail"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "macro_rules! generator for methods with trailing Option<T> parameters (auto Some, None, @raw escape, per-arg conversion)."
+description = "Macro generator for functions with trailing `Default` and `From<T>` parameters"
 
 [workspace]
 members = ["bobtail_proc"]
