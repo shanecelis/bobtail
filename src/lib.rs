@@ -3,8 +3,8 @@
 //! Tail omittable-parameter macros for methods.
 //!
 //! Provides:
-//! - `__opt!` and `__opt_conv!` legacy helpers for `None`, `Some(...)`, and `@raw ...` passthrough
 //! - `define_tail_optional_macro!` to generate a free macro that calls a method and fills trailing omittable params.
+//! - `tail_define!` to define multiple macros from prototypes in one block.
 //!
 //! ## Features
 //! - M required args, N optional trailing args
@@ -17,31 +17,7 @@
 pub use bobtail_proc::block;
 pub use bobtail_proc::bob;
 
-/// Wrap an expression into `Some(...)`, with support for `None` and `@raw` passthrough.
-///
-/// - `__opt!(None)` => `None`
-/// - `__opt!(@raw expr)` => `expr`
-/// - `__opt!(x)` => `Some(x)`
-#[macro_export]
-macro_rules! __opt {
-    (@raw $e:expr) => { $e };
-    (None) => { None };
-    ((None)) => { None };
-    ($e:expr) => { Some($e) };
-}
-
-/// Like [`__opt!`], but applies a conversion function/path to wrapped values.
-///
-/// - `__opt_conv!(x, PColor::from)` => `Some(PColor::from(x))`
-/// - `__opt_conv!(None, ...)` => `None`
-/// - `__opt_conv!(@raw opt, ...)` => `opt`
-#[macro_export]
-macro_rules! __opt_conv {
-    (@raw $e:expr, $conv:path) => { $e };
-    (None, $conv:path) => { None };
-    ((None), $conv:path) => { None };
-    ($e:expr, $conv:path) => { Some($conv($e)) };
-}
+mod tail_define;
 
 #[doc(hidden)]
 #[macro_export]
@@ -259,9 +235,15 @@ macro_rules! __tail_omittable_munch {
 /// Syntax:
 /// ```rust,ignore
 /// define_tail_optional_macro!(
-///     macro_name => method_name
-///     ( req1: Ty1, req2: Ty2, ... )
-///     [ opt1: OmittableTy1, opt2: OmittableTy2 => path::to::conv, ... ]
+///     macro_name => fn method_name(
+///         &mut self,
+///         req1: Ty1,
+///         req2: Ty2,
+///         #[tail]      // first tail-omittable parameter
+///         opt1: OmittableTy1,
+///         #[map(path::to::conv)] // optional conversion for an omittable param
+///         opt2: OmittableTy2,
+///     ) -> Result<(), ()>; // return type is optional and ignored
 /// );
 /// ```
 ///
