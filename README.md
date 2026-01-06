@@ -15,32 +15,32 @@ cargo run --example demo
 
 ## Prototypes
 
-You can provide method and free-function prototypes that will generate a macro for each using `tail_define!`.
+You can provide method and free-function prototypes that will generate a macro for each using `define!`.
 
-``` rust,ignore
+```rust
  /// This expression defines three macros: sset_macro!, sspr!, and prnt!
-tail_define!(
+bobtail::define! {
     sset_macro/* macro name */ => /* function prototype */ fn sset(
         &mut self,
         pos: (u32, u32),
         #[tail]
-        color: Option<PColor>,
+        color: Option<String>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()>;
-    // macro name can be omitted, in which case it is the same as the function name.
+    // The macro name can be omitted, in which case it is the same as the function name.
     /* function prototype */ fn sspr(
         &mut self,
         pos: (u32, u32),
         #[tail]
-        color: Option<PColor>,
+        color: Option<String>,
     ) -> Result<(), ()>;
 
     /* free-function function prototype */ fn prnt(
         pos: (u32, u32),
         #[tail]
-        color: Option<PColor>,
+        color: Option<String>,
     ) /* missing an explicit return */;
-)
+}
 ```
 
 ## Attributes (proc-macro)

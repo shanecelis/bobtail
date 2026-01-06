@@ -1,5 +1,3 @@
-use bobtail::define_tail;
-
 struct Pico8;
 impl Pico8 {
     fn sset(&mut self, _pos: (u32,u32), _color: Option<u8>, _sheet_index: Option<usize>) -> Result<(), ()> {
@@ -7,7 +5,7 @@ impl Pico8 {
     }
 }
 
-define_tail!(
+bobtail::define! {
     sset => fn sset(
         &mut self,
         pos: (u32, u32),
@@ -15,7 +13,7 @@ define_tail!(
         color: Option<u8>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()>;
-);
+}
 
 fn main() {
     let mut pico = Pico8;

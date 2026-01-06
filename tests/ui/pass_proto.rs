@@ -1,5 +1,3 @@
-use bobtail::define_tail;
-
 #[derive(Clone, Copy)]
 struct PColor(u8);
 impl From<u8> for PColor {
@@ -13,7 +11,7 @@ impl Pico8 {
     }
 }
 
-define_tail!(
+bobtail::define! {
     sset /* new macro name */ => fn sset(
         &mut self,
         pos: (u32, u32),
@@ -21,7 +19,7 @@ define_tail!(
         color: Option<PColor>,
         sheet_index: Option<usize>,
     ) -> Result<(), ()>;
-);
+}
 
 fn main() {
     let mut pico = Pico8;

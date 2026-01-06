@@ -1,5 +1,3 @@
-use bobtail::tail_define;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct PColor(u8);
 
@@ -34,7 +32,7 @@ fn prnt(_pos: (u32, u32), _color: Option<PColor>, input: MyInput) -> MyInput {
 }
 
 // Define macros individually (separate invocations)
-tail_define! {
+bobtail::define! {
     sset_macro_one => fn sset(
         &mut self,
         pos: (u32, u32),
@@ -44,7 +42,7 @@ tail_define! {
     ) -> Result<(), ()>;
 }
 
-tail_define! {
+bobtail::define! {
     // implicit macro name == function name
     fn sspr(
         &mut self,
@@ -54,7 +52,7 @@ tail_define! {
     ) -> Result<(), ()>;
 }
 
-tail_define! {
+bobtail::define! {
     // implicit macro name == function name
     fn prnt(
         pos: (u32, u32),
@@ -65,7 +63,7 @@ tail_define! {
 }
 
 // Define macros all together (single invocation) with distinct macro names to avoid redefinitions
-tail_define! {
+bobtail::define! {
     sset_macro_all => fn sset(
         &mut self,
         pos: (u32, u32),

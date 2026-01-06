@@ -194,7 +194,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     syn::ReturnType::Type(_, ty) => Some(ty.as_ref()),
                 };
 
-                // Emit as a tail_define item (method prototype).
+                // Emit as a define item (method prototype).
                 let method = &spec.method;
                 if let Some(mac) = &spec.macro_name {
                     if let Some(ret) = out_ty {
@@ -224,7 +224,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let tail_define_block = if items.is_empty() {
                 quote!()
             } else {
-                quote!(#crate_path::tail_define!( #(#items)* );)
+                quote!(#crate_path::define!( #(#items)* );)
             };
 
             let out = quote! {
@@ -239,7 +239,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-// ---- tail_define proc macro (prototype -> macro_rules wrapper generator) ----
+// ---- define proc macro (prototype -> macro_rules wrapper generator) ----
 
 fn is_tail_marker(attrs: &[Attribute]) -> bool {
     attrs.iter().any(is_tail_attr)
@@ -344,7 +344,8 @@ impl syn::parse::Parse for TailDefineInput {
     }
 }
 
-fn tail_define_impl(input: TokenStream) -> TokenStream {
+#[proc_macro]
+pub fn define(input: TokenStream) -> TokenStream {
     let crate_path = match bobtail_path() {
         Ok(p) => p,
         Err(e) => return e.to_compile_error().into(),
@@ -380,7 +381,7 @@ fn tail_define_impl(input: TokenStream) -> TokenStream {
             #(#outer_attrs)*
             macro_rules! #macro_name {
                 ($($call:tt)*) => {
-                    #crate_path::__tail_omittable_munch!(
+                    #crate_path::__bobtail_munch!(
                         #fn_name,
                         #recv_tok,
                         ( #(#req_idents,)* ),
@@ -394,20 +395,4 @@ fn tail_define_impl(input: TokenStream) -> TokenStream {
 
     out.into()
 }
-
-#[proc_macro]
-pub fn tail_define(input: TokenStream) -> TokenStream {
-    tail_define_impl(input)
-}
-
-#[proc_macro]
-pub fn define_tail_optional_macro(input: TokenStream) -> TokenStream {
-    tail_define_impl(input)
-}
-
-#[proc_macro]
-pub fn define_tail(input: TokenStream) -> TokenStream {
-    tail_define_impl(input)
-}
-
 

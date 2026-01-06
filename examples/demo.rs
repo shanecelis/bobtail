@@ -1,5 +1,3 @@
-use bobtail::define_tail;
-
 #[derive(Clone, Copy, Debug)]
 struct PColor(u8);
 impl From<u8> for PColor {
@@ -21,7 +19,7 @@ impl Pico8 {
     }
 }
 
-define_tail! {
+bobtail::define! {
     /// Set a pixel with optional color and optional sheet index.
     sset => fn sset(
         &mut self,

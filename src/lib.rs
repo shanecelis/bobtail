@@ -2,7 +2,7 @@
 //! Tail omittable-parameter macros for methods.
 //!
 //! Provides:
-//! - `tail_define!` to define multiple macros from prototypes in one block.
+//! - `define!` to define multiple macros from prototypes in one block.
 //!
 //! ## Features
 //! - Omitted optional arguments default to `Default::default()`.
@@ -18,12 +18,11 @@ extern crate self as bobtail;
 
 pub use bobtail_proc::block;
 pub use bobtail_proc::bob;
-pub use bobtail_proc::define_tail;
-pub use bobtail_proc::tail_define;
+pub use bobtail_proc::define;
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __tail_omittable_munch {
+macro_rules! __bobtail_munch {
     // Tail-argument conversion:
     // "_" => Default
     // expr => From::from(expr)
@@ -38,7 +37,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail:ident,)*);
         $self_:expr $(, $($rest:tt)*)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_req
+        $crate::__bobtail_munch!(@munch_req
             $fn_name,
             receiver,
             $self_,
@@ -57,7 +56,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail:ident,)*);
         $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_req
+        $crate::__bobtail_munch!(@munch_req
             $fn_name,
             no_receiver,
             (),
@@ -78,7 +77,7 @@ macro_rules! __tail_omittable_munch {
         ($($req_acc:expr,)*),
         $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -98,7 +97,7 @@ macro_rules! __tail_omittable_munch {
         ($($req_acc:expr,)*),
         $e:expr , $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_req
+        $crate::__bobtail_munch!(@munch_req
             $fn_name,
             $recv,
             $self_,
@@ -118,7 +117,7 @@ macro_rules! __tail_omittable_munch {
         ($($req_acc:expr,)*),
         $e:expr $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_req
+        $crate::__bobtail_munch!(@munch_req
             $fn_name,
             $recv,
             $self_,
@@ -138,7 +137,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@call
+        $crate::__bobtail_munch!(@call
             $fn_name,
             $recv,
             $self_,
@@ -170,7 +169,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -190,7 +189,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         _ , $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -210,7 +209,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         _ $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -231,7 +230,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         Default::default() , $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -251,7 +250,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         Default::default() $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -270,7 +269,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         ::core::default::Default::default() , $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -290,7 +289,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         ::core::default::Default::default() $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -309,7 +308,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         ::std::default::Default::default() , $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -329,7 +328,7 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         ::std::default::Default::default() $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
@@ -349,13 +348,13 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         $e:expr , $($rest:tt)*
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
             ($($rest_tail,)*),
             ($($req_acc,)*),
-            ($($tail_acc,)* $crate::__tail_omittable_munch!(@conv $e),),
+            ($($tail_acc,)* $crate::__bobtail_munch!(@conv $e),),
             $($rest)*
         )
     };
@@ -369,13 +368,13 @@ macro_rules! __tail_omittable_munch {
         ($($tail_acc:expr,)*),
         $e:expr $(,)?
     ) => {
-        $crate::__tail_omittable_munch!(@munch_tail
+        $crate::__bobtail_munch!(@munch_tail
             $fn_name,
             $recv,
             $self_,
             ($($rest_tail,)*),
             ($($req_acc,)*),
-            ($($tail_acc,)* $crate::__tail_omittable_munch!(@conv $e),),
+            ($($tail_acc,)* $crate::__bobtail_munch!(@conv $e),),
         )
     };
 
