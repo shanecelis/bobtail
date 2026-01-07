@@ -1,49 +1,154 @@
 # bobtail
 
-`macro_rules!` generator for methods with trailing `Option<T>` parameters.
+Generate macro proxies of functions whose tails can be "bobbed".
 
-## Tests
-
-- Unit tests: `cargo test`
-- Compile-fail tests (trybuild): `cargo test` (runs automatically)
-
-## Example
-
-```bash
-cargo run --example demo
-```
+This crate produces macro proxies of functions whose trailing arguments may be
+omitted.
 
 ## Prototypes
 
-You can provide method and free-function prototypes that will generate a macro for each using `define!`.
+The `define!` macro will generate macro proxies for functions and method prototypes.
+
+### Free Functions
 
 ```rust
- /// This expression defines three macros: sset_macro!, sspr!, and prnt!
-bobtail::define! {
-    sset_macro/* macro name */ => /* function prototype */ fn sset(
-        &mut self,
-        pos: (u32, u32),
-        #[tail]
-        color: Option<String>,
-        sheet_index: Option<usize>,
-    ) -> Result<(), ()>;
-    // The macro name can be omitted, in which case it is the same as the function name.
-    /* function prototype */ fn sspr(
-        &mut self,
-        pos: (u32, u32),
-        #[tail]
-        color: Option<String>,
-    ) -> Result<(), ()>;
+fn f(a: u8, b: Option<u8>) -> u8 {
+  b.map(|x| x + a).unwrap_or(a)
+}
 
-    /* free-function function prototype */ fn prnt(
-        pos: (u32, u32),
-        #[tail]
-        color: Option<String>,
-    ) /* missing an explicit return */;
+bobtail::define! {
+    fn f(a: u8, #[tail] b: Option<u8>);
+}
+
+assert_eq!(f(1, Some(2)), 3); // Explicit call
+assert_eq!(f!(1), 1); // Macro call with omission
+assert_eq!(f!(1, 2), 3); // Unwrapped second argument
+# assert_eq!(f!(1, Some(2)), 3); // Wrapped second argument
+```
+
+### Generated Macro Rules
+The `bobtail::define!` produces macro rules that might have looked like this code.
+```rust,ignore
+macro_rules! f {
+    ($a:expr) => {
+        f($a, None)
+    };
+    ($a:expr, $b:expr) => {
+        f($a, Some($b))
+    };
 }
 ```
 
-## Attributes (proc-macro)
+But `bobtail::define!` can handle the following case, which the above macro can
+not.
+
+``` rust,ignore
+assert_eq!(f!(1, Some(2)), 3); // Wrapped second argument
+```
+
+How? Because instead of being restricted to `Option`, an ommitable parameter can
+be any type that implements `Default` and `From<T>`. `bobtail::define!` produces
+something that looks like this:
+
+```rust,ignore
+macro_rules! f {
+    ($a:expr) => {
+        f($a, Default::default())
+    };
+    ($a:expr, $b:expr) => {
+        f($a, From::from($b))
+    };
+}
+```
+
+`From<T>` is not only more flexible, but it permits one to use `Some(2)` above
+because there is a blanket implementation for `From<T>` for all `T`, which is an
+identity function.
+
+### Methods
+
+Methods with a `&self`, `&mut self`, or `self` expect the receiver as the first
+argument to the macro proxy.
+
+```rust
+struct A;
+
+impl A {
+    fn b(&self, a: u8, b: Option<u8>) -> u8 {
+        b.map(|x| x + a).unwrap_or(a)
+    }
+    fn c(self, a: u8) -> u8 {
+        a
+    }
+}
+
+bobtail::define! {
+    fn b(&self, a: u8, #[tail] b: Option<u8>) -> u8;
+    fn c(self, #[tail] a: u8); // Return type can be omitted.
+}
+let a = A;
+
+assert_eq!(a.b(1, Some(2)), 3); // Explicit call.
+
+assert_eq!(b!(a, 1, Some(2)), 3); // Macro call.
+assert_eq!(b!(a, 1, 2), 3); // Omit `Some`.
+assert_eq!(b!(a, 1), 1); // Omit second argument.
+assert_eq!(c!(a, 4), 4); // Consume self.
+
+let a = A;
+assert_eq!(c!(a), 0); // Any `Default` will do.
+```
+
+## Attributes
+
+One can also generate macro proxies using attributes.
+
+### Free Functions
+
+```rust
+#[bobtail::bob]
+fn f(a: u8, b: Option<u8>) -> u8 {
+  b.map(|x| x + a).unwrap_or(a)
+}
+
+assert_eq!(f(1, Some(2)), 3); // Explicit call
+assert_eq!(f!(1), 1); // Macro call with omission
+assert_eq!(f!(1, 2), 3); // Unwrapped second argument
+# assert_eq!(f!(1, Some(2)), 3); // Wrapped second argument
+```
+
+### Methods
+
+Methods with a `&self`, `&mut self`, or `self` expect the receiver as the first
+argument to the macro proxy.
+
+```rust
+struct A;
+
+#[bobtail::block]
+impl A {
+    #[bobtail::bob]
+    fn b(&self, a: u8, #[tail] b: Option<u8>) -> u8 {
+        b.map(|x| x + a).unwrap_or(a)
+    }
+    #[bobtail::bob]
+    fn c(self, #[tail] a: u8) -> u8 {
+        a
+    }
+}
+
+let a = A;
+
+assert_eq!(a.b(1, Some(2)), 3); // Explicit call.
+
+assert_eq!(b!(a, 1, Some(2)), 3); // Macro call.
+assert_eq!(b!(a, 1, 2), 3); // Omit `Some`.
+assert_eq!(b!(a, 1), 1); // Omit second argument.
+assert_eq!(c!(a, 4), 4); // Consume self.
+
+let a = A;
+assert_eq!(c!(a), 0); // Any `Default` will do.
+```
 
 This crate includes optional proc-macro attributes (via a workspace member) to generate the `macro_rules!` wrappers for you.
 
@@ -74,6 +179,39 @@ fn free(x: u8, #[tail] y: Option<u8>) {
   // Free functions also work.
 }
 ```
+## Motivation and Justification
+
+This crate was inspired by my work on
+[Nano-9](https://github.com/shanecelis/nano-9), a Pico-8 compatibility layer for
+Bevy, because Pico-8's Lua API can have many arguments that are often omitted.
+Consider Pico-8's text drawing function `print`.
+
+``` lua
+-- print(str, [x,] [y,] [color])
+print("hello world")
+```
+
+Nano-9 provides the Lua API as-is, but it also provides a Pico-8-like API in
+Rust for which the above would look like this:
+
+``` rust,ignore
+// print(str, vec2, color, /* Nano-9 extensions: */ font_size, font_index)
+pico8.print("hello world", None, None, None, None).unwrap();
+```
+
+This crates aim is to offer an API on the Rust side that is not so verbose.
+
+``` rust,ignore
+print!(pico8, "hello world").unwrap();
+```
+
+The above is my reason for creating this crate, but that does not mean I
+wholeheartly endorse this kind of positional, omittable, API design. If I were
+not constrained by Pico-8's initial design and wanting to bear a strong
+resemblance to it, I would consider using structs expressively as named and
+omittable arguments or other crates like
+[typed-builder](https://crates.io/crates/typed-builder) and
+[derive_builder](https://crates.io/crates/derive_builder).
 
 ### Note
 These `#[bobtail::tail]` parameter markers are *consumed and stripped* by `#[bobtail::block]` during macro expansion.
