@@ -2,6 +2,12 @@
 
 Generate macro proxies of functions whose tails can be "bobbed" as in cut off.
 
+<p align="center">
+  <img height="300" alt="A bobtail machine" src="https://github.com/user-attachments/assets/68f58156-1308-4bb8-9700-546733d6d18b"><br>
+  <em>Figure 1. A bobtail machine.</em>
+</p>
+
+
 This crate produces macro proxies of functions whose trailing arguments may be
 omitted or provided with less boilerplate.
 
