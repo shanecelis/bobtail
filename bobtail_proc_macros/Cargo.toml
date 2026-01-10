@@ -3,7 +3,18 @@ name = "bobtail_proc_macros"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-
+description = "Helps generate macro proxies of functions whose tails can be \"bobbed\" as in cut off"
+authors = ["Shane Celis <shane.celis@gmail.com>"]
+repository = "https://github.com/shanecelis/bobtail"
+keywords = [
+    "optional-arguments",
+    "default-arguments",
+    "variadic",
+    "proc-macro",
+]
+categories = [
+    "development-tools::procedural-macro-helpers"
+]
 [lib]
 proc-macro = true
 

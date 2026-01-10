@@ -3,7 +3,19 @@ name = "bobtail"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Macro generator for functions with trailing `Default` and `From<T>` parameters"
+description = "Generate macro proxies of functions whose tails can be \"bobbed\" as in cut off"
+authors = ["Shane Celis <shane.celis@gmail.com>"]
+readme = "README.md"
+repository = "https://github.com/shanecelis/bobtail"
+keywords = [
+    "optional-arguments",
+    "default-arguments",
+    "variadic",
+    "proc-macro",
+]
+categories = [
+    "development-tools::procedural-macro-helpers"
+]
 
 [workspace]
 members = ["bobtail_proc_macros"]
