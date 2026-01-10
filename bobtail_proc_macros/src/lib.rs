@@ -1,18 +1,20 @@
 #![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
+use proc_macro2::{Ident as Ident2, Span};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{
     parse_macro_input,
     punctuated::Punctuated,
+    parse::{Parse, ParseStream},
     spanned::Spanned,
     Attribute,
     Error,
     Ident,
     ImplItem,
     ImplItemMethod,
+    ItemFn,
     Item,
     Meta,
     NestedMeta,
@@ -92,12 +94,117 @@ fn parse_attr_args(attr: &Attribute) -> Result<Vec<NestedMeta>> {
     Ok(punct.into_iter().collect())
 }
 
-/// Method marker/config attribute (no-op).
+fn parse_bob_attr_args(attr: TokenStream) -> Result<Vec<NestedMeta>> {
+    if attr.is_empty() {
+        return Ok(Vec::new());
+    }
+    struct BobArgs(Punctuated<NestedMeta, Token![,]>);
+    impl Parse for BobArgs {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Self(Punctuated::<NestedMeta, Token![,]>::parse_terminated(input)?))
+        }
+    }
+    let BobArgs(punct) = syn::parse2::<BobArgs>(attr.into())?;
+    Ok(punct.into_iter().collect())
+}
+
+/// Marker/config attribute.
+///
+/// - On `impl` methods, this is a marker consumed by `#[bobtail::block]`.
+/// - On free functions, this generates the corresponding `macro_rules!` proxy.
 #[proc_macro_attribute]
-pub fn bob(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut method: ImplItemMethod = parse_macro_input!(item as ImplItemMethod);
-    method.attrs.retain(|a| !is_bob_attr(a));
-    quote!(#method).into()
+pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if let Ok(mut fun) = syn::parse::<ItemFn>(item.clone()) {
+        // If it's a free function, generate the macro proxy right here.
+        let crate_path = match bobtail_path() {
+            Ok(p) => p,
+            Err(e) => return e.to_compile_error().into(),
+        };
+
+        let bob_args: Vec<NestedMeta> = match parse_bob_attr_args(attr) {
+            Ok(v) => v,
+            Err(e) => return e.to_compile_error().into(),
+        };
+
+        let mut macro_name: Option<Ident> = None;
+        if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.get(0) {
+            if let Some(id) = p.get_ident() {
+                macro_name = Some(id.clone());
+            }
+        }
+        let macro_name = macro_name.unwrap_or_else(|| fun.sig.ident.clone());
+
+        // Receiver isn't allowed in free functions, but syn would parse `self` anyway
+        // as a typed arg (and later fail typechecking). Reject it explicitly.
+        if fun.sig.inputs.iter().any(|a| matches!(a, syn::FnArg::Receiver(_))) {
+            return Error::new(fun.sig.span(), "#[bobtail::bob] on free functions cannot use a self receiver")
+                .to_compile_error()
+                .into();
+        }
+
+        // Collect typed params and find tail start.
+        let typed: Vec<&syn::PatType> = fun
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|a| match a {
+                syn::FnArg::Typed(p) => Some(p),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .collect();
+
+        let mut tail_start: Option<usize> = None;
+        for (i, p) in typed.iter().enumerate() {
+            if p.attrs.iter().any(is_tail_attr) {
+                tail_start = Some(i);
+                break;
+            }
+        }
+        // Default behavior for free functions: first arg is required; remaining are tail-omittable.
+        if tail_start.is_none() && typed.len() >= 2 {
+            tail_start = Some(1);
+        }
+
+        let req_count = tail_start.unwrap_or(typed.len());
+        let tail_count = tail_start.map(|i| typed.len().saturating_sub(i)).unwrap_or(0);
+
+        // Strip marker attrs so the compiler never needs to resolve them.
+        fun.attrs.retain(|a| !is_bob_attr(a));
+        for arg in &mut fun.sig.inputs {
+            let syn::FnArg::Typed(pat_ty) = arg else { continue };
+            pat_ty.attrs.retain(|a| !is_tail_attr(a) && !is_map_attr(a));
+        }
+
+        // Emit macro that delegates to bobtail's internal muncher.
+        let req_idents: Vec<Ident2> = (0..req_count)
+            .map(|i| Ident2::new(&format!("__bobtail_req_{i}"), Span::call_site()))
+            .collect();
+        let tail_idents: Vec<Ident2> = (0..tail_count)
+            .map(|i| Ident2::new(&format!("__bobtail_tail_{i}"), Span::call_site()))
+            .collect();
+        let fn_name = &fun.sig.ident;
+
+        let out = quote! {
+            #fun
+            macro_rules! #macro_name {
+                ($($call:tt)*) => {
+                    #crate_path::__bobtail_munch!(
+                        #fn_name,
+                        no_receiver,
+                        ( #(#req_idents,)* ),
+                        ( #(#tail_idents,)* );
+                        $($call)*
+                    )
+                };
+            }
+        };
+        out.into()
+    } else {
+        // Otherwise, treat it as an `impl` method marker (consumed by `#[bobtail::block]`).
+        let mut method: ImplItemMethod = parse_macro_input!(item as ImplItemMethod);
+        method.attrs.retain(|a| !is_bob_attr(a));
+        quote!(#method).into()
+    }
 }
 
 /// `impl`-block attribute that generates `macro_rules!` wrappers for methods marked with `#[tail_omittable(..)]`.

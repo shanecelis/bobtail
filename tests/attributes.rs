@@ -36,6 +36,38 @@ fn prnt(_pos: (u32, u32), _color: Option<PColor>, input: MyInput) -> MyInput {
     input
 }
 
+// Also test that we can define additional macro proxies explicitly, in one block,
+// alongside the attribute-driven ones above.
+bobtail::define! {
+    sset_macro_all => fn sset(
+        &mut self,
+        pos: (u32, u32),
+        #[tail]
+        color: Option<PColor>,
+        sheet_index: Option<usize>,
+    ) -> Result<(), ()>;
+
+    sspr_all => fn sspr(
+        &mut self,
+        pos: (u32, u32),
+        #[tail]
+        color: Option<PColor>,
+    ) -> Result<(), ()>;
+
+    prnt_all => fn prnt(
+        pos: (u32, u32),
+        #[tail]
+        color: Option<PColor>,
+        input: MyInput,
+    ) -> MyInput;
+
+    prnt_any => fn prnt(
+        pos: (u32, u32),
+        color: Option<PColor>,
+        input: MyInput,
+    ) -> MyInput;
+}
+
 #[test]
 fn tail_define_individual_method_with_explicit_macro_name() {
     let mut pico = Pico8::default();
