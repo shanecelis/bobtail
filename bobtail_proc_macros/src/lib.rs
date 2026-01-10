@@ -163,11 +163,8 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
                 break;
             }
         }
-        // Default behavior for free functions: first arg is required; remaining are tail-omittable.
-        if tail_start.is_none() && typed.len() >= 2 {
-            tail_start = Some(1);
-        }
 
+        // No default tail - if no #[tail] is present, all args are required
         let req_count = tail_start.unwrap_or(typed.len());
         let tail_count = tail_start
             .map(|i| typed.len().saturating_sub(i))

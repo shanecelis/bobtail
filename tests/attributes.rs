@@ -36,7 +36,7 @@ impl Pico8 {
 }
 
 #[bobtail::bob]
-fn prnt(_pos: (u32, u32), _color: Option<PColor>, input: MyInput) -> MyInput {
+fn prnt(_pos: (u32, u32), #[tail] _color: Option<PColor>, input: MyInput) -> MyInput {
     input
 }
 

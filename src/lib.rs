@@ -117,6 +117,19 @@ macro_rules! __bobtail_munch {
         )
     };
 
+    // Required args left but no input provided: error.
+    (@munch_req
+        $fn_name:ident,
+        $recv:ident,
+        $self_:tt,
+        ($need:ident, $($need_rest:ident,)*),
+        ($($tail:ident,)*),
+        ($($req_acc:expr,)*),
+        $(,)?
+    ) => {
+        compile_error!("missing required arguments");
+    };
+
     // ---- Munch tail args (0..=N provided); `_` means default; missing means default ----
     (@munch_tail
         $fn_name:ident,

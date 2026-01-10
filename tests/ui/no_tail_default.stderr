@@ -1,0 +1,7 @@
+error: missing required arguments
+  --> tests/ui/no_tail_default.rs:11:16
+   |
+11 |     assert_eq!(f!(1), 1);
+   |                ^^^^^
+   |
+   = note: this error originates in the macro `$crate::__bobtail_munch` which comes from the expansion of the macro `f` (in Nightly builds, run with -Z macro-backtrace for more info)
