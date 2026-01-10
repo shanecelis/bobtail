@@ -1,21 +1,9 @@
 #![doc(html_root_url = "https://docs.rs/bobtail/0.1.0")]
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
-//! Tail omittable-parameter macros for methods.
-//!
-//! Provides:
-//! - `define!` to define multiple macros from prototypes in one block.
-//!
-//! ## Features
-//! - Omitted optional arguments default to `Default::default()`.
-//!
-//! - Provided optional arguments default to `T::from(expr)`, i.e.,
-//!   `From::from(expr)` with type `T` inferred from the slot.
-//!
-//! - Literal `_` is treated like an omission that uses `Default::default()`,
-//!   e.g, an `Option<T>` is subsituted with `None`, a `u8` is substituted with
-//!   `0u8`.
+#![forbid(missing_docs)]
 
+// Allows the code to refer to itself as `bobtail` instead of `crate`.
 extern crate self as bobtail;
 
 pub use bobtail_proc_macros::block;

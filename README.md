@@ -3,7 +3,7 @@
 Generate macro proxies of functions whose tails can be "bobbed" as in cut off.
 
 This crate produces macro proxies of functions whose trailing arguments may be
-omitted.
+omitted or provided with less boilerplate.
 
 ## Prototypes
 
@@ -19,11 +19,11 @@ fn f(a: u8, b: Option<u8>) -> u8 {
 bobtail::define! {
     fn f(a: u8, #[tail] b: Option<u8>);
 }
-
-assert_eq!(f(1, Some(2)), 3); // Explicit call
-assert_eq!(f!(1), 1); // Macro call with omission
-assert_eq!(f!(1, 2), 3); // Unwrapped second argument
-# assert_eq!(f!(1, Some(2)), 3); // Wrapped second argument
+assert_eq!(f(1, Some(2)), 3);    // Call function.
+assert_eq!(f!(1), 1);            // Call macro with omission.
+assert_eq!(f!(1, _), 1);         // Call macro with explicit omission.
+assert_eq!(f!(1, 2), 3);         // Pass unwrapped second argument.
+# assert_eq!(f!(1, Some(2)), 3); // Pass wrapped second argument.
 ```
 
 ### Generated Macro Rules
@@ -43,7 +43,7 @@ But `bobtail::define!` can handle the following case, which the above macro can
 not.
 
 ``` rust,ignore
-assert_eq!(f!(1, Some(2)), 3); // Wrapped second argument
+assert_eq!(f!(1, Some(2)), 3);   // Pass wrapped second argument.
 ```
 
 How? Because instead of being restricted to `Option`, an ommitable parameter can
@@ -89,15 +89,16 @@ bobtail::define! {
 }
 let a = A;
 
-assert_eq!(a.b(1, Some(2)), 3); // Explicit call.
+assert_eq!(a.b(1, Some(2)), 3);   // Call function.
 
-assert_eq!(b!(a, 1, Some(2)), 3); // Macro call.
-assert_eq!(b!(a, 1, 2), 3); // Omit `Some`.
-assert_eq!(b!(a, 1), 1); // Omit second argument.
-assert_eq!(c_macro!(a, 4), 4); // Consume self.
+assert_eq!(b!(a, 1, Some(2)), 3); // Call macro.
+assert_eq!(b!(a, 1, 2), 3);       // Omit `Some`.
+assert_eq!(b!(a, 1), 1);          // Omit second argument.
+assert_eq!(b!(a, 1, _), 1);       // Explicitly omit second argument.
+assert_eq!(c_macro!(a, 4), 4);    // Consume self.
 
 let a = A;
-assert_eq!(c_macro!(a), 0); // Any `Default` will do.
+assert_eq!(c_macro!(a), 0);       // Any `Default` will do.
 ```
 
 ## Attributes
@@ -112,10 +113,11 @@ fn f(a: u8, b: Option<u8>) -> u8 {
   b.map(|x| x + a).unwrap_or(a)
 }
 
-assert_eq!(f(1, Some(2)), 3); // Explicit call
-assert_eq!(f!(1), 1); // Macro call with omission
-assert_eq!(f!(1, 2), 3); // Unwrapped second argument
-# assert_eq!(f!(1, Some(2)), 3); // Wrapped second argument
+assert_eq!(f(1, Some(2)), 3);    // Call function.
+assert_eq!(f!(1), 1);            // Call macro with omission.
+assert_eq!(f!(1, _), 1);         // Call macro with explicit omission.
+assert_eq!(f!(1, 2), 3);         // Pass unwrapped second argument.
+# assert_eq!(f!(1, Some(2)), 3); // Pass wrapped second argument.
 ```
 
 ### Methods
@@ -139,16 +141,16 @@ impl A {
 }
 
 let a = A;
+assert_eq!(a.b(1, Some(2)), 3);   // Call function.
 
-assert_eq!(a.b(1, Some(2)), 3); // Explicit call.
-
-assert_eq!(b!(a, 1, Some(2)), 3); // Macro call.
-assert_eq!(b!(a, 1, 2), 3); // Omit `Some`.
-assert_eq!(b!(a, 1), 1); // Omit second argument.
-assert_eq!(c_macro!(a, 4), 4); // Consume self.
+assert_eq!(b!(a, 1, Some(2)), 3); // Call macro.
+assert_eq!(b!(a, 1, 2), 3);       // Omit `Some`.
+assert_eq!(b!(a, 1), 1);          // Omit second argument.
+assert_eq!(b!(a, 1, _), 1);       // Explicitly omit second argument.
+assert_eq!(c_macro!(a, 4), 4);    // Consume self.
 
 let a = A;
-assert_eq!(c_macro!(a), 0); // Any `Default` will do.
+assert_eq!(c_macro!(a), 0);       // Any `Default` will do.
 ```
 ## Motivation and Justification
 
@@ -160,10 +162,11 @@ Pico-8's text drawing function `print`.
 ``` lua
 -- print(str, [x,] [y,] [color])
 print("hello world")
+-- No x? No y? No problem.
 ```
 
 Nano-9 provides the Lua API as-is, but it also provides a Pico-8-like API in
-Rust for which the above would look like this:
+Rust for which the above looks like this:
 
 ``` rust,ignore
 // print(str, vec2, color, /* Nano-9 extensions: */ font_size, font_index)
@@ -177,7 +180,9 @@ verbose.
 print!(pico8, "hello world").unwrap();
 ```
 
-The above is my reason for creating this crate, but that does not mean I
+### A Caution
+
+This is my reason for creating this crate, but that does not mean I
 wholeheartly endorse this kind of positional, omittable, API design. If I were
 not constrained by Pico-8's initial design and wanting to bear a strong
 resemblance to it, I would consider using structs expressively as named and
