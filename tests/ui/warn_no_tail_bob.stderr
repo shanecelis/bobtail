@@ -1,0 +1,9 @@
+warning: use of deprecated constant `f_no_tail::_w`:
+                 It is deprecated to using `f` without `#[tail]` attribute.
+                 Please instead add `#[tail]` to make trailing arguments optional.
+ --> tests/ui/warn_no_tail_bob.rs:6:4
+  |
+6 | fn f(a: u8, b: Option<u8>) -> u8 {
+  |    ^
+  |
+  = note: `#[warn(deprecated)]` on by default

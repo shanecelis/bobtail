@@ -24,7 +24,7 @@ impl Pico8 {
         Ok(())
     }
 
-    #[bob]
+    #[bobtail::bob]
     pub fn sset2(
         &mut self,
         pos: (u32, u32),

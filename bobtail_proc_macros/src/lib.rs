@@ -244,6 +244,8 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
     match parsed {
         Item::Impl(mut item_impl) => {
             let mut items = Vec::<proc_macro2::TokenStream>::new();
+            let mut warnings = Vec::<proc_macro2::TokenStream>::new();
+            let mut warning_counter = 0u64;
 
             for it in &item_impl.items {
                 let ImplItem::Method(method_fn) = it else {
@@ -336,8 +338,11 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 // Emit a warning if no #[tail] attribute is present
                 // Check if there are any non-receiver arguments
                 let method_warning = if !has_any_tail && method_fn.sig.inputs.iter().skip(1).next().is_some() {
+                    // Use a unique identifier with a counter to avoid conflicts
+                    let unique_id = format!("{}_{}_no_tail", method_fn.sig.ident, warning_counter);
+                    warning_counter += 1;
                     Some(
-                        Warning::new_deprecated(&format!("{}_no_tail", method_fn.sig.ident))
+                        Warning::new_deprecated(&unique_id)
                             .old(&format!("using `{}` without `#[tail]` attribute", method_fn.sig.ident))
                             .new(&format!("add `#[tail]` to make trailing arguments optional"))
                             .span(method_fn.sig.ident.span())
@@ -354,17 +359,20 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 // Emit as a define item (method prototype).
                 let method = &spec.method;
-                let warning_tokens = method_warning.map(|w| quote!(#w)).unwrap_or(quote!());
+                // Store warnings separately to emit before the define! block
+                if let Some(warning) = method_warning {
+                    warnings.push(quote!(#warning));
+                }
                 if let Some(mac) = &spec.macro_name {
                     if let Some(ret) = out_ty {
-                        items.push(quote!(#warning_tokens #mac => fn #method( #(#proto_params)* ) -> #ret;));
+                        items.push(quote!(#mac => fn #method( #(#proto_params)* ) -> #ret;));
                     } else {
-                        items.push(quote!(#warning_tokens #mac => fn #method( #(#proto_params)* );));
+                        items.push(quote!(#mac => fn #method( #(#proto_params)* );));
                     }
                 } else if let Some(ret) = out_ty {
-                    items.push(quote!(#warning_tokens fn #method( #(#proto_params)* ) -> #ret;));
+                    items.push(quote!(fn #method( #(#proto_params)* ) -> #ret;));
                 } else {
-                    items.push(quote!(#warning_tokens fn #method( #(#proto_params)* );));
+                    items.push(quote!(fn #method( #(#proto_params)* );));
                 }
             }
 
@@ -392,6 +400,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let out = quote! {
                 #item_impl
+                #(#warnings)*
                 #tail_define_block
             };
             out.into()
@@ -535,18 +544,10 @@ pub fn define(input: TokenStream) -> TokenStream {
             tail_count,
         } = item;
 
-        // Emit a warning if no #[tail] attribute is present
-        let warning = if tail_count == 0 && req_count > 0 {
-            Some(
-                Warning::new_deprecated(&format!("{}_no_tail", fn_name))
-                    .old(&format!("using `{}` without `#[tail]` attribute", fn_name))
-                    .new(&format!("add `#[tail]` to make trailing arguments optional"))
-                    .span(fn_name.span())
-                    .build_or_panic(),
-            )
-        } else {
-            None
-        };
+        // Note: We don't emit warnings here in define! because:
+        // 1. When called from block!, warnings are already emitted there
+        // 2. When called directly by users, they should use #[bob] or #[block] which emit warnings
+        // This avoids duplicate warnings
 
         let recv_tok = if has_receiver {
             quote!(receiver)
@@ -563,7 +564,6 @@ pub fn define(input: TokenStream) -> TokenStream {
 
         out.extend(quote! {
             #(#outer_attrs)*
-            #warning
             macro_rules! #macro_name {
                 ($($call:tt)*) => {
                     #crate_path::__bobtail_munch!(
