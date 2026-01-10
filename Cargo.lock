@@ -15,6 +15,7 @@ name = "bobtail_proc_macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro-crate",
+ "proc-macro-warning",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -67,6 +68,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
  "toml_edit",
+]
+
+[[package]]
+name = "proc-macro-warning"
+version = "1.84.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75eea531cfcd120e0851a3f8aed42c4841f78c889eefafd96339c72677ae42c3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.113",
 ]
 
 [[package]]

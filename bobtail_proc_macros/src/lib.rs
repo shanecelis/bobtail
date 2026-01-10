@@ -6,6 +6,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident as Ident2, Span};
 use proc_macro_crate::{crate_name, FoundCrate};
+use proc_macro_warning::Warning;
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
@@ -164,6 +165,19 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
+        // Emit a warning if no #[tail] attribute is present
+        let warning = if tail_start.is_none() && !typed.is_empty() {
+            Some(
+                Warning::new_deprecated(&format!("{}_no_tail", fun.sig.ident))
+                    .old(&format!("using `{}` without `#[tail]` attribute", fun.sig.ident))
+                    .new(&format!("add `#[tail]` to make trailing arguments optional"))
+                    .span(fun.sig.ident.span())
+                    .build_or_panic(),
+            )
+        } else {
+            None
+        };
+
         // No default tail - if no #[tail] is present, all args are required
         let req_count = tail_start.unwrap_or(typed.len());
         let tail_count = tail_start
@@ -190,6 +204,7 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         let out = quote! {
             #fun
+            #warning
             macro_rules! #macro_name {
                 ($($call:tt)*) => {
                     #crate_path::__bobtail_munch!(
@@ -273,6 +288,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 // Track the first #[bobtail::tail] to emit #[tail] exactly once.
                 let mut tail_started = false;
+                let mut has_any_tail = false;
 
                 for arg in method_fn.sig.inputs.iter().skip(1) {
                     let syn::FnArg::Typed(pat_ty) = arg else {
@@ -290,6 +306,9 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let ty = pat_ty.ty.as_ref();
 
                     let has_tail = pat_ty.attrs.iter().any(is_tail_attr);
+                    if has_tail {
+                        has_any_tail = true;
+                    }
                     // let mut map_paths: Vec<Path> = Vec::new();
                     // for a in &pat_ty.attrs {
                     //     if is_map_attr(a) {
@@ -314,6 +333,20 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     proto_params.push(quote!(#(#markers)* #name : #ty,));
                 }
 
+                // Emit a warning if no #[tail] attribute is present
+                // Check if there are any non-receiver arguments
+                let method_warning = if !has_any_tail && method_fn.sig.inputs.iter().skip(1).next().is_some() {
+                    Some(
+                        Warning::new_deprecated(&format!("{}_no_tail", method_fn.sig.ident))
+                            .old(&format!("using `{}` without `#[tail]` attribute", method_fn.sig.ident))
+                            .new(&format!("add `#[tail]` to make trailing arguments optional"))
+                            .span(method_fn.sig.ident.span())
+                            .build_or_panic(),
+                    )
+                } else {
+                    None
+                };
+
                 let out_ty = match &method_fn.sig.output {
                     syn::ReturnType::Default => None,
                     syn::ReturnType::Type(_, ty) => Some(ty.as_ref()),
@@ -321,16 +354,17 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 // Emit as a define item (method prototype).
                 let method = &spec.method;
+                let warning_tokens = method_warning.map(|w| quote!(#w)).unwrap_or(quote!());
                 if let Some(mac) = &spec.macro_name {
                     if let Some(ret) = out_ty {
-                        items.push(quote!(#mac => fn #method( #(#proto_params)* ) -> #ret;));
+                        items.push(quote!(#warning_tokens #mac => fn #method( #(#proto_params)* ) -> #ret;));
                     } else {
-                        items.push(quote!(#mac => fn #method( #(#proto_params)* );));
+                        items.push(quote!(#warning_tokens #mac => fn #method( #(#proto_params)* );));
                     }
                 } else if let Some(ret) = out_ty {
-                    items.push(quote!(fn #method( #(#proto_params)* ) -> #ret;));
+                    items.push(quote!(#warning_tokens fn #method( #(#proto_params)* ) -> #ret;));
                 } else {
-                    items.push(quote!(fn #method( #(#proto_params)* );));
+                    items.push(quote!(#warning_tokens fn #method( #(#proto_params)* );));
                 }
             }
 
@@ -501,6 +535,19 @@ pub fn define(input: TokenStream) -> TokenStream {
             tail_count,
         } = item;
 
+        // Emit a warning if no #[tail] attribute is present
+        let warning = if tail_count == 0 && req_count > 0 {
+            Some(
+                Warning::new_deprecated(&format!("{}_no_tail", fn_name))
+                    .old(&format!("using `{}` without `#[tail]` attribute", fn_name))
+                    .new(&format!("add `#[tail]` to make trailing arguments optional"))
+                    .span(fn_name.span())
+                    .build_or_panic(),
+            )
+        } else {
+            None
+        };
+
         let recv_tok = if has_receiver {
             quote!(receiver)
         } else {
@@ -516,6 +563,7 @@ pub fn define(input: TokenStream) -> TokenStream {
 
         out.extend(quote! {
             #(#outer_attrs)*
+            #warning
             macro_rules! #macro_name {
                 ($($call:tt)*) => {
                     #crate_path::__bobtail_munch!(

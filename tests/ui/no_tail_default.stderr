@@ -5,3 +5,13 @@ error: missing required arguments
    |                ^^^^^
    |
    = note: this error originates in the macro `$crate::__bobtail_munch` which comes from the expansion of the macro `f` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: use of deprecated constant `f_no_tail::_w`:
+                 It is deprecated to using `f` without `#[tail]` attribute.
+                 Please instead add `#[tail]` to make trailing arguments optional.
+ --> tests/ui/no_tail_default.rs:4:4
+  |
+4 | fn f(a: u8, b: Option<u8>) -> u8 {
+  |    ^
+  |
+  = note: `#[warn(deprecated)]` on by default
