@@ -1,3 +1,6 @@
+#![doc(html_root_url = "https://docs.rs/bobtail/0.1.0")]
+#![doc = include_str!("../README.md")]
+#![forbid(missing_docs)]
 #![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
@@ -108,10 +111,8 @@ fn parse_bob_attr_args(attr: TokenStream) -> Result<Vec<NestedMeta>> {
     Ok(punct.into_iter().collect())
 }
 
-/// Marker/config attribute.
-///
-/// - On `impl` methods, this is a marker consumed by `#[bobtail::block]`.
-/// - On free functions, this generates the corresponding `macro_rules!` proxy.
+/// Tag functions or methods that have a `#[tail]`, which can be omitted.
+/// attributes on methods.
 #[proc_macro_attribute]
 pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
     if let Ok(mut fun) = syn::parse::<ItemFn>(item.clone()) {
@@ -207,7 +208,7 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-/// `impl`-block attribute that generates `macro_rules!` wrappers for methods marked with `#[tail_omittable(..)]`.
+/// Tag `impl`-blocks to enable specifying `#[bob]` and `#[tail]` attributes on methods.
 #[proc_macro_attribute]
 pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_ts: proc_macro2::TokenStream = item.clone().into();
@@ -451,6 +452,8 @@ impl syn::parse::Parse for TailDefineInput {
     }
 }
 
+/// Specify function or method prototypes that generates a variadic macro proxy
+/// allow for omission of elements in its "tail".
 #[proc_macro]
 pub fn define(input: TokenStream) -> TokenStream {
     let crate_path = match bobtail_path() {
