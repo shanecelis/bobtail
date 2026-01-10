@@ -24,7 +24,7 @@ members = ["bobtail_proc_macros"]
 path = "src/lib.rs"
 
 [dependencies]
-bobtail_proc_macros = { path = "bobtail_proc_macros" }
+bobtail_proc_macros = "0.1.0"
 
 [dev-dependencies]
 trybuild = "1"

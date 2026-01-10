@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 struct PColor(u8);
 impl From<u8> for PColor {

@@ -6,13 +6,25 @@ version = 4
 name = "bobtail"
 version = "0.1.0"
 dependencies = [
- "bobtail_proc_macros",
+ "bobtail_proc_macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "trybuild",
 ]
 
 [[package]]
 name = "bobtail_proc_macros"
 version = "0.1.0"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "bobtail_proc_macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15afba9a70c349ee90f0f21e1a06973de6890961480481c738bc052ce0054209"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
