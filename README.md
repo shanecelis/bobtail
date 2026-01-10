@@ -115,7 +115,7 @@ One can also generate macro proxies with attributes.
 
 ```rust
 #[bobtail::bob]
-fn f(a: u8, b: Option<u8>) -> u8 {
+fn f(a: u8, #[tail] b: Option<u8>) -> u8 {
   b.map(|x| x + a).unwrap_or(a)
 }
 
@@ -207,3 +207,15 @@ cargo add bobtail
 ## License
 
 This crate is licensed under the MIT License or the Apache License 2.0.
+
+## Tests
+
+If no `#[tail]` is present, then all arguments are required.
+``` rust,compile_fail
+#[bobtail::bob]
+fn f(a: u8, b: Option<u8>) -> u8 {
+  b.map(|x| x + a).unwrap_or(a)
+}
+
+assert_eq!(f!(1), 1);            // Call macro with omission.
+```
