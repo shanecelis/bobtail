@@ -16,7 +16,12 @@ impl From<u8> for MyInput {
 }
 
 impl Pico8 {
-    fn sset(&mut self, _pos: (u32, u32), _color: Option<PColor>, _sheet_index: Option<usize>) -> Result<(), ()> {
+    fn sset(
+        &mut self,
+        _pos: (u32, u32),
+        _color: Option<PColor>,
+        _sheet_index: Option<usize>,
+    ) -> Result<(), ()> {
         self.last.push("sset");
         Ok(())
     }
@@ -120,7 +125,10 @@ fn tail_define_individual_free_function() {
     assert_eq!(prnt_all!((0, 0), PColor(7), MyInput(9)), MyInput(9));
     assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
     assert_eq!(prnt_all!((0, 0), PColor(7), Default::default()), MyInput(0));
-    assert_eq!(prnt_any!((0, 0), Some(PColor(7)), Default::default()), MyInput(0));
+    assert_eq!(
+        prnt_any!((0, 0), Some(PColor(7)), Default::default()),
+        MyInput(0)
+    );
 }
 
 #[test]
@@ -133,5 +141,3 @@ fn tail_define_all_together() {
     assert_eq!(prnt!((9, 9)), x);
     assert_eq!(pico.last, vec!["sset", "sspr"]);
 }
-
-

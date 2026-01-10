@@ -8,21 +8,11 @@ use proc_macro2::{Ident as Ident2, Span};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{
+    parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    parse::{Parse, ParseStream},
     spanned::Spanned,
-    Attribute,
-    Error,
-    Ident,
-    ImplItem,
-    ImplItemMethod,
-    ItemFn,
-    Item,
-    Meta,
-    NestedMeta,
-    Pat,
-    Result,
+    Attribute, Error, Ident, ImplItem, ImplItemMethod, Item, ItemFn, Meta, NestedMeta, Pat, Result,
     Token,
 };
 
@@ -50,7 +40,9 @@ struct MethodSpec {
 
 impl MethodSpec {
     fn new(method: Ident) -> Self {
-        Self { method, macro_name: None, //conv: Vec::new()
+        Self {
+            method,
+            macro_name: None, //conv: Vec::new()
         }
     }
 }
@@ -104,7 +96,9 @@ fn parse_bob_attr_args(attr: TokenStream) -> Result<Vec<NestedMeta>> {
     struct BobArgs(Punctuated<NestedMeta, Token![,]>);
     impl Parse for BobArgs {
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Self(Punctuated::<NestedMeta, Token![,]>::parse_terminated(input)?))
+            Ok(Self(Punctuated::<NestedMeta, Token![,]>::parse_terminated(
+                input,
+            )?))
         }
     }
     let BobArgs(punct) = syn::parse2::<BobArgs>(attr.into())?;
@@ -137,10 +131,18 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         // Receiver isn't allowed in free functions, but syn would parse `self` anyway
         // as a typed arg (and later fail typechecking). Reject it explicitly.
-        if fun.sig.inputs.iter().any(|a| matches!(a, syn::FnArg::Receiver(_))) {
-            return Error::new(fun.sig.span(), "#[bobtail::bob] on free functions cannot use a self receiver")
-                .to_compile_error()
-                .into();
+        if fun
+            .sig
+            .inputs
+            .iter()
+            .any(|a| matches!(a, syn::FnArg::Receiver(_)))
+        {
+            return Error::new(
+                fun.sig.span(),
+                "#[bobtail::bob] on free functions cannot use a self receiver",
+            )
+            .to_compile_error()
+            .into();
         }
 
         // Collect typed params and find tail start.
@@ -167,12 +169,16 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         let req_count = tail_start.unwrap_or(typed.len());
-        let tail_count = tail_start.map(|i| typed.len().saturating_sub(i)).unwrap_or(0);
+        let tail_count = tail_start
+            .map(|i| typed.len().saturating_sub(i))
+            .unwrap_or(0);
 
         // Strip marker attrs so the compiler never needs to resolve them.
         fun.attrs.retain(|a| !is_bob_attr(a));
         for arg in &mut fun.sig.inputs {
-            let syn::FnArg::Typed(pat_ty) = arg else { continue };
+            let syn::FnArg::Typed(pat_ty) = arg else {
+                continue;
+            };
             pat_ty.attrs.retain(|a| !is_tail_attr(a) && !is_map_attr(a));
         }
 
@@ -228,7 +234,9 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let mut items = Vec::<proc_macro2::TokenStream>::new();
 
             for it in &item_impl.items {
-                let ImplItem::Method(method_fn) = it else { continue };
+                let ImplItem::Method(method_fn) = it else {
+                    continue;
+                };
 
                 // Find `#[bobtail::bob]` marker on this method.
                 let mut found_bob: Option<Attribute> = None;
@@ -254,7 +262,12 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
 
                 let Some(receiver) = receiver_tokens(&method_fn.sig) else {
-                    return Error::new(method_fn.sig.span(), "bobtail::block currently requires a self receiver").to_compile_error().into();
+                    return Error::new(
+                        method_fn.sig.span(),
+                        "bobtail::block currently requires a self receiver",
+                    )
+                    .to_compile_error()
+                    .into();
                 };
 
                 // Build prototype params by largely reusing the method signature + markers.
@@ -265,9 +278,16 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let mut tail_started = false;
 
                 for arg in method_fn.sig.inputs.iter().skip(1) {
-                    let syn::FnArg::Typed(pat_ty) = arg else { continue };
+                    let syn::FnArg::Typed(pat_ty) = arg else {
+                        continue;
+                    };
                     let Pat::Ident(pat_ident) = pat_ty.pat.as_ref() else {
-                        return Error::new(pat_ty.pat.span(), "bobtail only supports ident parameters").to_compile_error().into();
+                        return Error::new(
+                            pat_ty.pat.span(),
+                            "bobtail only supports ident parameters",
+                        )
+                        .to_compile_error()
+                        .into();
                     };
                     let name = &pat_ident.ident;
                     let ty = pat_ty.ty.as_ref();
@@ -319,10 +339,14 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             // Strip marker attrs from the output impl so the compiler never has to resolve them.
             for it in &mut item_impl.items {
-                let ImplItem::Method(method_fn) = it else { continue };
+                let ImplItem::Method(method_fn) = it else {
+                    continue;
+                };
                 method_fn.attrs.retain(|a| !is_bob_attr(a));
                 for arg in &mut method_fn.sig.inputs {
-                    let syn::FnArg::Typed(pat_ty) = arg else { continue };
+                    let syn::FnArg::Typed(pat_ty) = arg else {
+                        continue;
+                    };
                     pat_ty.attrs.retain(|a| !is_tail_attr(a) && !is_map_attr(a));
                 }
             }
@@ -341,9 +365,12 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
             };
             out.into()
         }
-        other => Error::new(other.span(), "bobtail::block can only be used on an impl block")
-            .to_compile_error()
-            .into(),
+        other => Error::new(
+            other.span(),
+            "bobtail::block can only be used on an impl block",
+        )
+        .to_compile_error()
+        .into(),
     }
 }
 
@@ -393,7 +420,10 @@ impl syn::parse::Parse for ProtoItem {
             match a {
                 syn::FnArg::Receiver(_) => {
                     if i != 0 {
-                        return Err(Error::new(fn_name.span(), "receiver must be the first parameter"));
+                        return Err(Error::new(
+                            fn_name.span(),
+                            "receiver must be the first parameter",
+                        ));
                     }
                     has_receiver = true;
                 }
@@ -505,4 +535,3 @@ pub fn define(input: TokenStream) -> TokenStream {
 
     out.into()
 }
-

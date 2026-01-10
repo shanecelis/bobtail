@@ -2,7 +2,9 @@
 #[derive(Clone, Copy, Debug)]
 struct PColor(u8);
 impl From<u8> for PColor {
-    fn from(v: u8) -> Self { PColor(v) }
+    fn from(v: u8) -> Self {
+        PColor(v)
+    }
 }
 
 #[derive(Default)]
