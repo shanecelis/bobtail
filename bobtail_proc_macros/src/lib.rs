@@ -169,8 +169,13 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
         let warning = if tail_start.is_none() && !typed.is_empty() {
             Some(
                 Warning::new_deprecated(&format!("{}_no_tail", fun.sig.ident))
-                    .old(&format!("using `{}` without `#[tail]` attribute", fun.sig.ident))
-                    .new(&format!("add `#[tail]` to make trailing arguments optional"))
+                    .old(&format!(
+                        "using `{}` without `#[tail]` attribute",
+                        fun.sig.ident
+                    ))
+                    .new(&format!(
+                        "add `#[tail]` to make trailing arguments optional"
+                    ))
                     .span(fun.sig.ident.span())
                     .build_or_panic(),
             )
@@ -337,14 +342,21 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 // Emit a warning if no #[tail] attribute is present
                 // Check if there are any non-receiver arguments
-                let method_warning = if !has_any_tail && method_fn.sig.inputs.iter().skip(1).next().is_some() {
+                let method_warning = if !has_any_tail
+                    && method_fn.sig.inputs.iter().skip(1).next().is_some()
+                {
                     // Use a unique identifier with a counter to avoid conflicts
                     let unique_id = format!("{}_{}_no_tail", method_fn.sig.ident, warning_counter);
                     warning_counter += 1;
                     Some(
                         Warning::new_deprecated(&unique_id)
-                            .old(&format!("using `{}` without `#[tail]` attribute", method_fn.sig.ident))
-                            .new(&format!("add `#[tail]` to make trailing arguments optional"))
+                            .old(&format!(
+                                "using `{}` without `#[tail]` attribute",
+                                method_fn.sig.ident
+                            ))
+                            .new(&format!(
+                                "add `#[tail]` to make trailing arguments optional"
+                            ))
                             .span(method_fn.sig.ident.span())
                             .build_or_panic(),
                     )
