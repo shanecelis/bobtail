@@ -15,4 +15,6 @@ fn main() {
     let _ = f(1, Some(2));
     // Also use the macro
     let _ = f!(1, Some(2));
+    // Force a compile failure.
+    let _ = f!(1);
 }

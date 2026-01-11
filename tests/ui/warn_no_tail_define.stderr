@@ -1,9 +1,7 @@
-warning: use of deprecated constant `f_no_tail::_w`:
-                 It is deprecated to using `f` without `#[tail]` attribute.
-                 Please instead add `#[tail]` to make trailing arguments optional.
- --> tests/ui/warn_no_tail_define.rs:10:8
-  |
-10 |     fn f(a: u8, b: Option<u8>) -> u8;
-  |        ^
-  |
-  = note: `#[warn(deprecated)]` on by default
+error: missing required arguments
+  --> tests/ui/warn_no_tail_define.rs:19:13
+   |
+19 |     let _ = f!(1);
+   |             ^^^^^
+   |
+   = note: this error originates in the macro `$crate::__bobtail_munch` which comes from the expansion of the macro `f` (in Nightly builds, run with -Z macro-backtrace for more info)
