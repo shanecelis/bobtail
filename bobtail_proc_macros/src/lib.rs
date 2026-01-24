@@ -622,27 +622,98 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
             quote!(no_receiver)
         };
 
-        let req_idents: Vec<Ident> = (0..req_count)
-            .map(|i| Ident::new(&format!("__bobtail_req_{i}"), Span::call_site()))
-            .collect();
-        let tail_idents: Vec<Ident> = (0..tail_count)
-            .map(|i| Ident::new(&format!("__bobtail_tail_{i}"), Span::call_site()))
-            .collect();
-
+        // Generate explicit match arms for each possible argument count
+        // For each combination from 0 to tail_count provided tail args, generate a match arm
+        let mut match_arms = proc_macro2::TokenStream::new();
+        
+        for provided_tail_count in 0..=tail_count {
+            // Pattern: receiver (if any) + required args + provided tail args
+            let mut pattern_parts = Vec::new();
+            let mut call_args = Vec::new();
+            
+            // Add receiver pattern if present
+            if has_receiver {
+                pattern_parts.push(quote!($self_:expr));
+            }
+            
+            // Add required argument patterns
+            for i in 0..req_count {
+                let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
+                pattern_parts.push(quote!($#ident:expr));
+                call_args.push(quote!($#ident));
+            }
+            
+            // Add provided tail argument patterns
+            for i in 0..provided_tail_count {
+                let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
+                pattern_parts.push(quote!($#ident:expr));
+                call_args.push(quote!(::core::convert::From::from($#ident)));
+            }
+            
+            // Add defaulted tail arguments
+            for _ in provided_tail_count..tail_count {
+                call_args.push(quote!(::core::default::Default::default()));
+            }
+            
+            // Generate the match arm pattern (without trailing comma)
+            // All patterns need parentheses in macro_rules!
+            let pattern = if pattern_parts.is_empty() {
+                quote!(())
+            } else {
+                // Build pattern by constructing token stream manually
+                use proc_macro2::{Delimiter, TokenTree};
+                let mut inner = proc_macro2::TokenStream::new();
+                
+                let mut first = true;
+                for part in pattern_parts.iter() {
+                    if !first {
+                        inner.extend(quote!(,));
+                    }
+                    inner.extend(part.clone());
+                    first = false;
+                }
+                
+                let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
+                let mut pat_ts = proc_macro2::TokenStream::new();
+                pat_ts.extend(std::iter::once(TokenTree::Group(group)));
+                pat_ts
+            };
+            
+            // Generate the function call (all args in one call, no trailing comma)
+            let call = if call_args.is_empty() {
+                if has_receiver {
+                    quote!($self_.#fn_name())
+                } else {
+                    quote!(#fn_name())
+                }
+            } else {
+                // Build comma-separated args list manually to avoid trailing comma
+                let first_arg = call_args.first().unwrap();
+                let mut args_ts = quote!(#first_arg);
+                for arg in call_args.iter().skip(1) {
+                    args_ts.extend(quote!(, #arg));
+                }
+                
+                if has_receiver {
+                    quote!($self_.#fn_name(#args_ts))
+                } else {
+                    quote!(#fn_name(#args_ts))
+                }
+            };
+            
+            match_arms.extend(quote! {
+                #pattern => {
+                    #call
+                };
+            });
+        }
+        
         // If #[macro_export] is in outer_attrs, use it; otherwise don't add it
         // The attribute should have been parsed correctly by Attribute::parse_outer
         out.extend(quote! {
             #(#outer_attrs)*
             macro_rules! #macro_name {
-                ($($call:tt)*) => {
-                    #crate_path::__bobtail_munch!(
-                        #fn_name,
-                        #recv_tok,
-                        ( #(#req_idents,)* ),
-                        ( #(#tail_idents,)* );
-                        $($call)*
-                    )
-                };
+                #match_arms
             }
         });
     }
@@ -709,8 +780,10 @@ mod tests {
         let output = define_impl(input_ts);
         let output_str = output.to_string();
         
-        // Expected output: macro_rules! definition
-        let expected = r#"macro_rules ! f { ($ ($ call : tt) *) => { :: bobtail :: __bobtail_munch ! (f , no_receiver , (__bobtail_req_0 ,) , (__bobtail_tail_0 ,) ; $ ($ call) *) } ; }"#;
+        // Expected output: explicit match arms for each argument combination
+        // Format: ($arg:expr) => { f($arg, Default::default()) } for 0 tail args
+        //         ($arg:expr, $tail:expr) => { f($arg, From::from($tail)) } for 1 tail arg
+        let expected = r#"macro_rules ! f { ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ; ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ; }"#;
         assert_eq!(output_str.trim(), expected.trim());
     }
 }
