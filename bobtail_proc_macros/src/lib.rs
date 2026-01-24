@@ -598,6 +598,8 @@ pub fn define(input: TokenStream) -> TokenStream {
             .map(|i| Ident::new(&format!("__bobtail_tail_{i}"), Span::call_site()))
             .collect();
 
+        // If #[macro_export] is in outer_attrs, use it; otherwise don't add it
+        // The attribute should have been parsed correctly by Attribute::parse_outer
         out.extend(quote! {
             #(#outer_attrs)*
             macro_rules! #macro_name {
