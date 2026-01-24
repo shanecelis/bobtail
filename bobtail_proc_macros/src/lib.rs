@@ -213,28 +213,134 @@ fn bob_impl(attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> p
             pat_ty.attrs.retain(|a| !is_tail_attr(a) && !is_map_attr(a));
         }
 
-        // Emit macro that delegates to bobtail's internal muncher.
-        let req_idents: Vec<Ident2> = (0..req_count)
-            .map(|i| Ident2::new(&format!("__bobtail_req_{i}"), Span::call_site()))
-            .collect();
-        let tail_idents: Vec<Ident2> = (0..tail_count)
-            .map(|i| Ident2::new(&format!("__bobtail_tail_{i}"), Span::call_site()))
-            .collect();
+        // Generate explicit match arms for each possible argument count
         let fn_name = &fun.sig.ident;
+        let mut match_arms = proc_macro2::TokenStream::new();
+        
+        for provided_tail_count in 0..=tail_count {
+            // Pattern: required args + provided tail args
+            let mut pattern_parts = Vec::new();
+            let mut call_args = Vec::new();
+            
+            // Add required argument patterns
+            for i in 0..req_count {
+                let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
+                pattern_parts.push(quote!($#ident:expr));
+                call_args.push(quote!($#ident));
+            }
+            
+            // Add provided tail argument patterns
+            for i in 0..provided_tail_count {
+                let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
+                pattern_parts.push(quote!($#ident:expr));
+                call_args.push(quote!(::core::convert::From::from($#ident)));
+            }
+            
+            // Add defaulted tail arguments
+            for _ in provided_tail_count..tail_count {
+                call_args.push(quote!(::core::default::Default::default()));
+            }
+            
+            // Generate the match arm pattern (without trailing comma)
+            use proc_macro2::{Delimiter, TokenTree};
+            let pattern = if pattern_parts.is_empty() {
+                quote!(())
+            } else {
+                let mut inner = proc_macro2::TokenStream::new();
+                
+                let mut first = true;
+                for part in pattern_parts.iter() {
+                    if !first {
+                        inner.extend(quote!(,));
+                    }
+                    inner.extend(part.clone());
+                    first = false;
+                }
+                
+                let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
+                let mut pat_ts = proc_macro2::TokenStream::new();
+                pat_ts.extend(std::iter::once(TokenTree::Group(group)));
+                pat_ts
+            };
+            
+            // Generate the function call (all args in one call, no trailing comma)
+            let call = if call_args.is_empty() {
+                quote!(#fn_name())
+            } else {
+                let first_arg = call_args.first().unwrap();
+                let mut args_ts = quote!(#first_arg);
+                for arg in call_args.iter().skip(1) {
+                    args_ts.extend(quote!(, #arg));
+                }
+                quote!(#fn_name(#args_ts))
+            };
+            
+            match_arms.extend(quote! {
+                #pattern => {
+                    #call
+                };
+            });
+        }
+        
+        // Add catch-all pattern to handle `_` token in tail positions
+        if tail_count > 0 {
+            let mut catch_all_pattern = Vec::new();
+            let mut catch_all_call = Vec::new();
+            
+            for i in 0..req_count {
+                let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
+                catch_all_pattern.push(quote!($#ident:expr));
+                catch_all_call.push(quote!($#ident));
+            }
+            
+            for i in 0..tail_count {
+                let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
+                catch_all_pattern.push(quote!($#ident:tt));
+                catch_all_call.push(quote!(#crate_path::__bobtail_handle_underscore!($#ident)));
+            }
+            
+            use proc_macro2::{Delimiter, TokenTree};
+            let pattern = if catch_all_pattern.is_empty() {
+                quote!(())
+            } else {
+                let mut inner = proc_macro2::TokenStream::new();
+                let mut first = true;
+                for part in catch_all_pattern.iter() {
+                    if !first {
+                        inner.extend(quote!(,));
+                    }
+                    inner.extend(part.clone());
+                    first = false;
+                }
+                let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
+                let mut pat_ts = proc_macro2::TokenStream::new();
+                pat_ts.extend(std::iter::once(TokenTree::Group(group)));
+                pat_ts
+            };
+            
+            let call = if catch_all_call.is_empty() {
+                quote!(#fn_name())
+            } else {
+                let first_arg = catch_all_call.first().unwrap();
+                let mut args_ts = quote!(#first_arg);
+                for arg in catch_all_call.iter().skip(1) {
+                    args_ts.extend(quote!(, #arg));
+                }
+                quote!(#fn_name(#args_ts))
+            };
+            
+            match_arms.extend(quote! {
+                #pattern => {
+                    #call
+                };
+            });
+        }
 
         let out = quote! {
             #fun
             #warning
             macro_rules! #macro_name {
-                ($($call:tt)*) => {
-                    #crate_path::__bobtail_munch!(
-                        #fn_name,
-                        no_receiver,
-                        ( #(#req_idents,)* ),
-                        ( #(#tail_idents,)* );
-                        $($call)*
-                    )
-                };
+                #match_arms
             }
         };
         // println!("BOB {}", &out);
@@ -426,6 +532,58 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                         let first_arg = call_args.first().unwrap();
                         let mut args_ts = quote!(#first_arg);
                         for arg in call_args.iter().skip(1) {
+                            args_ts.extend(quote!(, #arg));
+                        }
+                        quote!($self_.#fn_name(#args_ts))
+                    };
+                    
+                    match_arms.extend(quote! {
+                        #pattern => {
+                            #call
+                        };
+                    });
+                }
+                
+                // Add catch-all pattern to handle `_` token in tail positions
+                if tail_count > 0 {
+                    let mut catch_all_pattern = Vec::new();
+                    let mut catch_all_call = Vec::new();
+                    
+                    catch_all_pattern.push(quote!($self_:expr));
+                    
+                    for i in 0..req_count {
+                        let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
+                        catch_all_pattern.push(quote!($#ident:expr));
+                        catch_all_call.push(quote!($#ident));
+                    }
+                    
+                    for i in 0..tail_count {
+                        let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
+                        catch_all_pattern.push(quote!($#ident:tt));
+                        catch_all_call.push(quote!(#crate_path::__bobtail_handle_underscore!($#ident)));
+                    }
+                    
+                    use proc_macro2::{Delimiter, TokenTree};
+                    let pattern = {
+                        let mut inner = proc_macro2::TokenStream::new();
+                        let mut first = true;
+                        for part in catch_all_pattern.iter() {
+                            if !first {
+                                inner.extend(quote!(,));
+                            }
+                            inner.extend(part.clone());
+                            first = false;
+                        }
+                        let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
+                        let mut pat_ts = proc_macro2::TokenStream::new();
+                        pat_ts.extend(std::iter::once(TokenTree::Group(group)));
+                        pat_ts
+                    };
+                    
+                    let call = {
+                        let first_arg = catch_all_call.first().unwrap();
+                        let mut args_ts = quote!(#first_arg);
+                        for arg in catch_all_call.iter().skip(1) {
                             args_ts.extend(quote!(, #arg));
                         }
                         quote!($self_.#fn_name(#args_ts))
@@ -640,9 +798,10 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         };
 
         // Generate explicit match arms for each possible argument count
-        // For each combination from 0 to tail_count provided tail args, generate a match arm
+        // Also generate arms that handle `_` as a special token meaning "use default"
         let mut match_arms = proc_macro2::TokenStream::new();
         
+        // Generate arms for each number of provided tail args (0 to tail_count)
         for provided_tail_count in 0..=tail_count {
             // Pattern: receiver (if any) + required args + provided tail args
             let mut pattern_parts = Vec::new();
@@ -673,12 +832,10 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
             }
             
             // Generate the match arm pattern (without trailing comma)
-            // All patterns need parentheses in macro_rules!
+            use proc_macro2::{Delimiter, TokenTree};
             let pattern = if pattern_parts.is_empty() {
                 quote!(())
             } else {
-                // Build pattern by constructing token stream manually
-                use proc_macro2::{Delimiter, TokenTree};
                 let mut inner = proc_macro2::TokenStream::new();
                 
                 let mut first = true;
@@ -704,7 +861,6 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
                     quote!(#fn_name())
                 }
             } else {
-                // Build comma-separated args list manually to avoid trailing comma
                 let first_arg = call_args.first().unwrap();
                 let mut args_ts = quote!(#first_arg);
                 for arg in call_args.iter().skip(1) {
@@ -724,6 +880,11 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
                 };
             });
         }
+        
+        // Note: `_` cannot be matched in macro_rules! patterns (it's reserved)
+        // The explicit patterns above handle all cases where expressions are provided
+        // For `_` support, we would need recursive macro expansion like the old `__bobtail_munch!`
+        // For now, users should omit arguments instead of using `_`
         
         // If #[macro_export] is in outer_attrs, use it; otherwise don't add it
         // The attribute should have been parsed correctly by Attribute::parse_outer
@@ -760,8 +921,8 @@ mod tests {
         let output = bob_impl(empty_attr, input_ts);
         let output_str = output.to_string();
         
-        // Expected output: function definition + macro_rules! definition
-        let expected = r#"fn f (a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } macro_rules ! f { ($ ($ call : tt) *) => { :: bobtail :: __bobtail_munch ! (f , no_receiver , (__bobtail_req_0 ,) , (__bobtail_tail_0 ,) ; $ ($ call) *) } ; }"#;
+        // Expected output: function definition + explicit macro_rules! with match arms
+        let expected = r#"fn f (a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } macro_rules ! f { ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ; ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ; ($ arg_0 : expr , $ tail_0 : tt) => { f ($ arg_0 , :: bobtail :: __bobtail_handle_underscore ! ($ tail_0)) } ; }"#;
         assert_eq!(output_str.trim(), expected.trim());
     }
 
