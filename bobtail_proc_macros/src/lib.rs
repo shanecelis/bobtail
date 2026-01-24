@@ -905,6 +905,13 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
 mod tests {
     use super::*;
     use proc_macro2::TokenStream;
+    use regex::Regex;
+    use std::borrow::Cow;
+
+    fn substitute_newline_star(input: &str) -> Cow<'_, str> {
+        let re = Regex::new(r"\n *").expect("invalid regex");
+        re.replace_all(input, " ")
+    }
 
     #[test]
     fn test_bob_macro_output() {
@@ -922,8 +929,22 @@ mod tests {
         let output_str = output.to_string();
         
         // Expected output: function definition + explicit macro_rules! with match arms
-        let expected = r#"fn f (a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } macro_rules ! f { ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ; ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ; ($ arg_0 : expr , $ tail_0 : tt) => { f ($ arg_0 , :: bobtail :: __bobtail_handle_underscore ! ($ tail_0)) } ; }"#;
-        assert_eq!(output_str.trim(), expected.trim());
+        let expected = r#"
+fn f (a : u8 , b : Option < u8 >) -> u8 {
+  b . map (| x | x + a) . unwrap_or (a)
+}
+macro_rules ! f {
+  ($ arg_0 : expr) => {
+    f ($ arg_0 , :: core :: default :: Default :: default ())
+  } ;
+  ($ arg_0 : expr , $ tail_0 : expr) => {
+    f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0))
+  } ;
+  ($ arg_0 : expr , $ tail_0 : tt) => {
+    f ($ arg_0 , :: bobtail :: __bobtail_handle_underscore ! ($ tail_0))
+  } ;
+}"#;
+        assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
 
     #[test]
@@ -944,8 +965,23 @@ mod tests {
         let output_str = output.to_string();
         
         // Expected output: impl block + explicit macro_rules! with match arms
-        let expected = r#"impl A { pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } } # [macro_export] macro_rules ! b { ($ self_ : expr , $ arg_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ; ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ; }"#;
-        assert_eq!(output_str.trim(), expected.trim());
+        let expected = r#"
+impl A {
+  pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
+    b . map (| x | x + a) . unwrap_or (a) }
+  }
+  # [macro_export] macro_rules ! b {
+    ($ self_ : expr , $ arg_0 : expr) => {
+      $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ())
+    } ;
+    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr) => {
+      $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0))
+    } ;
+    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : tt) => {
+      $ self_ . b ($ arg_0 , :: bobtail :: __bobtail_handle_underscore ! ($ tail_0))
+    } ;
+}"#;
+        assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
 
     #[test]
@@ -961,7 +997,15 @@ mod tests {
         // Expected output: explicit match arms for each argument combination
         // Format: ($arg:expr) => { f($arg, Default::default()) } for 0 tail args
         //         ($arg:expr, $tail:expr) => { f($arg, From::from($tail)) } for 1 tail arg
-        let expected = r#"macro_rules ! f { ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ; ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ; }"#;
-        assert_eq!(output_str.trim(), expected.trim());
+        let expected = r#"
+macro_rules ! f {
+  ($ arg_0 : expr) => {
+    f ($ arg_0 , :: core :: default :: Default :: default ())
+  } ;
+  ($ arg_0 : expr , $ tail_0 : expr) => {
+    f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0))
+  } ;
+}"#;
+        assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
 }
