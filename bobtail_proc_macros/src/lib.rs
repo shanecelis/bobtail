@@ -5,12 +5,13 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::{Ident as Ident2, Span};
+#[cfg(not(test))]
 use proc_macro_crate::{crate_name, FoundCrate};
 use proc_macro_warning::Warning;
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input,
+    // parse_macro_input,
     punctuated::Punctuated,
     spanned::Spanned,
     Attribute, Error, Ident, ImplItem, ImplItemMethod, Item, ItemFn, Meta, NestedMeta, Pat, Result,
@@ -18,18 +19,27 @@ use syn::{
 };
 
 fn bobtail_path() -> Result<proc_macro2::TokenStream> {
-    let found = crate_name("bobtail")
-        .map_err(|e| Error::new(Span::call_site(), format!("proc-macro-crate error: {e}")))?;
-    Ok(match found {
-        // We want a path that works even when this proc-macro is invoked from a
-        // binary target in the same package (examples), where `crate` would
-        // refer to the binary crate, not the library crate.
-        FoundCrate::Itself => quote!(::bobtail),
-        FoundCrate::Name(name) => {
-            let ident = Ident::new(&name, Span::call_site());
-            quote!(::#ident)
-        }
-    })
+    #[cfg(test)]
+    {
+        // In tests, return a mock path to avoid dependency lookup errors
+        return Ok(quote!(::bobtail));
+    }
+    
+    #[cfg(not(test))]
+    {
+        let found = crate_name("bobtail")
+            .map_err(|e| Error::new(Span::call_site(), format!("proc-macro-crate error: {e}")))?;
+        Ok(match found {
+            // We want a path that works even when this proc-macro is invoked from a
+            // binary target in the same package (examples), where `crate` would
+            // refer to the binary crate, not the library crate.
+            FoundCrate::Itself => quote!(::bobtail),
+            FoundCrate::Name(name) => {
+                let ident = Ident::new(&name, Span::call_site());
+                quote!(::#ident)
+            }
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -90,7 +100,7 @@ fn parse_attr_args(attr: &Attribute) -> Result<Vec<NestedMeta>> {
     Ok(punct.into_iter().collect())
 }
 
-fn parse_bob_attr_args(attr: TokenStream) -> Result<Vec<NestedMeta>> {
+fn parse_bob_attr_args(attr: proc_macro2::TokenStream) -> Result<Vec<NestedMeta>> {
     if attr.is_empty() {
         return Ok(Vec::new());
     }
@@ -102,7 +112,7 @@ fn parse_bob_attr_args(attr: TokenStream) -> Result<Vec<NestedMeta>> {
             )?))
         }
     }
-    let BobArgs(punct) = syn::parse2::<BobArgs>(attr.into())?;
+    let BobArgs(punct) = syn::parse2::<BobArgs>(attr)?;
     Ok(punct.into_iter().collect())
 }
 
@@ -110,7 +120,12 @@ fn parse_bob_attr_args(attr: TokenStream) -> Result<Vec<NestedMeta>> {
 /// attributes on methods.
 #[proc_macro_attribute]
 pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if let Ok(mut fun) = syn::parse::<ItemFn>(item.clone()) {
+    bob_impl(attr.into(), item.into()).into()
+}
+
+/// Internal implementation that works with proc_macro2 for testing
+fn bob_impl(attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    if let Ok(mut fun) = syn::parse2::<ItemFn>(item.clone()) {
         // If it's a free function, generate the macro proxy right here.
         let crate_path = match bobtail_path() {
             Ok(p) => p,
@@ -226,16 +241,24 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
         out.into()
     } else {
         // Otherwise, treat it as an `impl` method marker (consumed by `#[bobtail::block]`).
-        let mut method: ImplItemMethod = parse_macro_input!(item as ImplItemMethod);
+        let mut method: ImplItemMethod = match syn::parse2(item.clone()) {
+            Ok(m) => m,
+            Err(e) => return e.to_compile_error(),
+        };
         method.attrs.retain(|a| !is_bob_attr(a));
-        quote!(#method).into()
+        quote!(#method)
     }
 }
 
 /// Tag `impl`-blocks to enable specifying `#[bob]` and `#[tail]` attributes on methods.
 #[proc_macro_attribute]
 pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let item_ts: proc_macro2::TokenStream = item.clone().into();
+    block_impl(_attr.into(), item.into()).into()
+}
+
+/// Internal implementation that works with proc_macro2 for testing
+fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let item_ts: proc_macro2::TokenStream = item.clone();
 
     let crate_path = match bobtail_path() {
         Ok(p) => p,
@@ -562,12 +585,20 @@ impl syn::parse::Parse for TailDefineInput {
 /// allow for omission of elements in its "tail".
 #[proc_macro]
 pub fn define(input: TokenStream) -> TokenStream {
+    define_impl(input.into()).into()
+}
+
+/// Internal implementation that works with proc_macro2 for testing
+fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let crate_path = match bobtail_path() {
         Ok(p) => p,
         Err(e) => return e.to_compile_error().into(),
     };
 
-    let parsed: TailDefineInput = parse_macro_input!(input as TailDefineInput);
+    let parsed: TailDefineInput = match syn::parse2(input.clone()) {
+        Ok(p) => p,
+        Err(e) => return e.to_compile_error(),
+    };
     let mut out = proc_macro2::TokenStream::new();
 
     for item in parsed.items {
@@ -619,4 +650,67 @@ pub fn define(input: TokenStream) -> TokenStream {
     // eprintln!("DEFINE {}", &out);
     // dbg!(out.into())
     out.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proc_macro2::TokenStream;
+
+    #[test]
+    fn test_bob_macro_output() {
+        let input = r#"
+            fn f(a: u8, #[tail] b: Option<u8>) -> u8 {
+                b.map(|x| x + a).unwrap_or(a)
+            }
+        "#;
+        
+        let input_ts: TokenStream = input.parse().unwrap();
+        let empty_attr: TokenStream = TokenStream::new();
+        
+        // Call the internal implementation that works with proc_macro2
+        let output = bob_impl(empty_attr, input_ts);
+        let output_str = output.to_string();
+        
+        // Expected output: function definition + macro_rules! definition
+        let expected = r#"fn f (a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } macro_rules ! f { ($ ($ call : tt) *) => { :: bobtail :: __bobtail_munch ! (f , no_receiver , (__bobtail_req_0 ,) , (__bobtail_tail_0 ,) ; $ ($ call) *) } ; }"#;
+        assert_eq!(output_str.trim(), expected.trim());
+    }
+
+    #[test]
+    fn test_block_macro_output() {
+        let input = r#"
+            impl A {
+                #[bobtail::bob]
+                pub fn b(&self, a: u8, #[tail] b: Option<u8>) -> u8 {
+                    b.map(|x| x + a).unwrap_or(a)
+                }
+            }
+        "#;
+        
+        let input_ts: TokenStream = input.parse().unwrap();
+        let empty_attr: TokenStream = TokenStream::new();
+        
+        let output = block_impl(empty_attr, input_ts);
+        let output_str = output.to_string();
+        
+        // Expected output: impl block + define! macro call
+        let expected = r#"impl A { pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } } :: bobtail :: define ! (# [macro_export] fn b (& self , a : u8 , # [tail] b : Option < u8 > ,) -> u8 ;) ;"#;
+        assert_eq!(output_str.trim(), expected.trim());
+    }
+
+    #[test]
+    fn test_define_macro_output() {
+        let input = r#"
+            fn f(a: u8, #[tail] b: Option<u8>) -> u8;
+        "#;
+        
+        let input_ts: TokenStream = input.parse().unwrap();
+        let output = define_impl(input_ts);
+        let output_str = output.to_string();
+        
+        // Expected output: macro_rules! definition
+        let expected = r#"macro_rules ! f { ($ ($ call : tt) *) => { :: bobtail :: __bobtail_munch ! (f , no_receiver , (__bobtail_req_0 ,) , (__bobtail_tail_0 ,) ; $ ($ call) *) } ; }"#;
+        assert_eq!(output_str.trim(), expected.trim());
+    }
 }

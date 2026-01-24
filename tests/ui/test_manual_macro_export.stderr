@@ -1,0 +1,11 @@
+error: cannot find macro `example_macro` in this scope
+  --> tests/ui/test_manual_macro_export.rs:14:17
+   |
+14 |         let _ = example_macro!();
+   |                 ^^^^^^^^^^^^^
+   |
+   = help: have you added the `#[macro_use]` on the module/import?
+help: consider importing this macro through its public re-export
+   |
+12 +     use crate::example_macro;
+   |

@@ -1,0 +1,14 @@
+error: no rules expected `,`
+  --> tests/ui/pub_macro_export_manual.rs:39:24
+   |
+15 |     macro_rules! b {
+   |     -------------- when calling this macro
+...
+39 |         let _ = b!(a, 1, Some(2));
+   |                        ^ no rules expected this token in macro call
+   |
+note: while trying to match meta-variable `$b:expr`
+  --> tests/ui/pub_macro_export_manual.rs:19:19
+   |
+19 |         ($a:expr, $b:expr) => {
+   |                   ^^^^^^^

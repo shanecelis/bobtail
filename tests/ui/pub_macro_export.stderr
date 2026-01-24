@@ -1,0 +1,11 @@
+error: cannot find macro `b` in this scope
+  --> tests/ui/pub_macro_export.rs:23:17
+   |
+23 |         let _ = b!(a, 1, Some(2));
+   |                 ^
+   |
+   = help: have you added the `#[macro_use]` on the module/import?
+help: consider importing this macro through its public re-export
+   |
+16 +     use crate::b;
+   |

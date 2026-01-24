@@ -1,0 +1,30 @@
+error: cannot determine resolution for the import
+  --> tests/ui/pub_macro_export_define.rs:20:9
+   |
+20 |     use crate::b;
+   |         ^^^^^^^^
+
+error[E0433]: failed to resolve: could not find `tail` in `bobtail`
+ --> tests/ui/pub_macro_export_define.rs:7:43
+  |
+7 |         pub fn b(&self, a: u8, #[bobtail::tail] b: Option<u8>) -> u8 {
+  |                                           ^^^^ could not find `tail` in `bobtail`
+
+error: macro-expanded `macro_export` macros from the current crate cannot be referred to by absolute paths
+  --> tests/ui/pub_macro_export_define.rs:20:9
+   |
+20 |     use crate::b;
+   |         ^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #52234 <https://github.com/rust-lang/rust/issues/52234>
+note: the macro is defined here
+  --> tests/ui/pub_macro_export_define.rs:11:5
+   |
+11 | /     bobtail::define! {
+12 | |         #[macro_export]
+13 | |         fn b(&self, a: u8, #[bobtail::tail] b: Option<u8>) -> u8;
+14 | |     }
+   | |_____^
+   = note: `#[deny(macro_expanded_macro_exports_accessed_by_absolute_paths)]` (part of `#[deny(future_incompatible)]`) on by default
+   = note: this error originates in the macro `bobtail::define` (in Nightly builds, run with -Z macro-backtrace for more info)
