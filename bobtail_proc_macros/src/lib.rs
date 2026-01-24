@@ -313,62 +313,33 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                     .into();
                 };
 
-                // Build prototype params by largely reusing the method signature + markers.
-                let mut proto_params: Vec<proc_macro2::TokenStream> = Vec::new();
-                proto_params.push(quote!(#receiver,));
+                // Collect typed params and find tail start
+                let typed: Vec<&syn::PatType> = method_fn
+                    .sig
+                    .inputs
+                    .iter()
+                    .skip(1)
+                    .filter_map(|a| match a {
+                        syn::FnArg::Typed(p) => Some(p),
+                        syn::FnArg::Receiver(_) => None,
+                    })
+                    .collect();
 
-                // Track the first #[bobtail::tail] to emit #[tail] exactly once.
-                let mut tail_started = false;
-                let mut has_any_tail = false;
-
-                for arg in method_fn.sig.inputs.iter().skip(1) {
-                    let syn::FnArg::Typed(pat_ty) = arg else {
-                        continue;
-                    };
-                    let Pat::Ident(pat_ident) = pat_ty.pat.as_ref() else {
-                        return Error::new(
-                            pat_ty.pat.span(),
-                            "bobtail only supports ident parameters",
-                        )
-                        .to_compile_error()
-                        .into();
-                    };
-                    let name = &pat_ident.ident;
-                    let ty = pat_ty.ty.as_ref();
-
-                    let has_tail = pat_ty.attrs.iter().any(is_tail_attr);
-                    if has_tail {
-                        has_any_tail = true;
+                let mut tail_start: Option<usize> = None;
+                for (i, p) in typed.iter().enumerate() {
+                    if p.attrs.iter().any(is_tail_attr) {
+                        tail_start = Some(i);
+                        break;
                     }
-                    // let mut map_paths: Vec<Path> = Vec::new();
-                    // for a in &pat_ty.attrs {
-                    //     if is_map_attr(a) {
-                    //         let p: Path = match a.parse_args() {
-                    //             Ok(p) => p,
-                    //             Err(e) => return e.to_compile_error().into(),
-                    //         };
-                    //         map_paths.push(p);
-                    //     }
-                    // }
-
-                    let mut markers: Vec<proc_macro2::TokenStream> = Vec::new();
-                    if has_tail && !tail_started {
-                        markers.push(quote!(#[tail]));
-                        tail_started = true;
-                    }
-                    // for p in map_paths {
-                    //     markers.push(quote!(#[map(#p)]));
-                    //     spec.conv.push((name.clone(), p));
-                    // }
-
-                    proto_params.push(quote!(#(#markers)* #name : #ty,));
                 }
 
+                let req_count = tail_start.unwrap_or(typed.len());
+                let tail_count = tail_start
+                    .map(|i| typed.len().saturating_sub(i))
+                    .unwrap_or(0);
+
                 // Emit a warning if no #[tail] attribute is present
-                // Check if there are any non-receiver arguments
-                let method_warning = if !has_any_tail
-                    && method_fn.sig.inputs.iter().skip(1).next().is_some()
-                {
+                let method_warning = if tail_start.is_none() && !typed.is_empty() {
                     // Use a unique identifier with a counter to avoid conflicts
                     let unique_id = format!("{}_{}_no_tail", method_fn.sig.ident, warning_counter);
                     warning_counter += 1;
@@ -388,50 +359,102 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                     None
                 };
 
-                let out_ty = match &method_fn.sig.output {
-                    syn::ReturnType::Default => None,
-                    syn::ReturnType::Type(_, ty) => Some(ty.as_ref()),
-                };
+                // Store warnings separately
+                if let Some(warning) = method_warning {
+                    warnings.push(quote!(#warning));
+                }
 
                 // Check if the method is public
                 let is_public = matches!(method_fn.vis, Visibility::Public(_));
 
-                // Emit as a define item (method prototype).
-                let method = &spec.method;
-                // Store warnings separately to emit before the define! block
-                if let Some(warning) = method_warning {
-                    warnings.push(quote!(#warning));
+                // Generate explicit match arms for the macro
+                let macro_name = &spec.macro_name.unwrap_or_else(|| method_fn.sig.ident.clone());
+                let fn_name = &method_fn.sig.ident;
+                
+                // Generate explicit match arms for each possible argument count
+                let mut match_arms = proc_macro2::TokenStream::new();
+                
+                for provided_tail_count in 0..=tail_count {
+                    // Pattern: receiver + required args + provided tail args
+                    let mut pattern_parts = Vec::new();
+                    let mut call_args = Vec::new();
+                    
+                    // Add receiver pattern (always present for methods)
+                    pattern_parts.push(quote!($self_:expr));
+                    
+                    // Add required argument patterns
+                    for i in 0..req_count {
+                        let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
+                        pattern_parts.push(quote!($#ident:expr));
+                        call_args.push(quote!($#ident));
+                    }
+                    
+                    // Add provided tail argument patterns
+                    for i in 0..provided_tail_count {
+                        let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
+                        pattern_parts.push(quote!($#ident:expr));
+                        call_args.push(quote!(::core::convert::From::from($#ident)));
+                    }
+                    
+                    // Add defaulted tail arguments
+                    for _ in provided_tail_count..tail_count {
+                        call_args.push(quote!(::core::default::Default::default()));
+                    }
+                    
+                    // Generate the match arm pattern (without trailing comma)
+                    use proc_macro2::{Delimiter, TokenTree};
+                    let mut inner = proc_macro2::TokenStream::new();
+                    
+                    let mut first = true;
+                    for part in pattern_parts.iter() {
+                        if !first {
+                            inner.extend(quote!(,));
+                        }
+                        inner.extend(part.clone());
+                        first = false;
+                    }
+                    
+                    let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
+                    let mut pat_ts = proc_macro2::TokenStream::new();
+                    pat_ts.extend(std::iter::once(TokenTree::Group(group)));
+                    let pattern = pat_ts;
+                    
+                    // Generate the function call (all args in one call, no trailing comma)
+                    let call = if call_args.is_empty() {
+                        quote!($self_.#fn_name())
+                    } else {
+                        let first_arg = call_args.first().unwrap();
+                        let mut args_ts = quote!(#first_arg);
+                        for arg in call_args.iter().skip(1) {
+                            args_ts.extend(quote!(, #arg));
+                        }
+                        quote!($self_.#fn_name(#args_ts))
+                    };
+                    
+                    match_arms.extend(quote! {
+                        #pattern => {
+                            #call
+                        };
+                    });
                 }
                 
-                // Add #[macro_export] attribute if the method is public
-                // Format it properly so it's parsed as an outer attribute
-                if let Some(mac) = &spec.macro_name {
-                    if let Some(ret) = out_ty {
-                        if is_public {
-                            items.push(quote!(#[macro_export] #mac => fn #method( #(#proto_params)* ) -> #ret;));
-                        } else {
-                            items.push(quote!(#mac => fn #method( #(#proto_params)* ) -> #ret;));
+                // Generate the macro_rules! with explicit match arms
+                let macro_def = if is_public {
+                    quote! {
+                        #[macro_export]
+                        macro_rules! #macro_name {
+                            #match_arms
                         }
-                    } else {
-                        if is_public {
-                            items.push(quote!(#[macro_export] #mac => fn #method( #(#proto_params)* );));
-                        } else {
-                            items.push(quote!(#mac => fn #method( #(#proto_params)* );));
-                        }
-                    }
-                } else if let Some(ret) = out_ty {
-                    if is_public {
-                        items.push(quote!(#[macro_export] fn #method( #(#proto_params)* ) -> #ret;));
-                    } else {
-                        items.push(quote!(fn #method( #(#proto_params)* ) -> #ret;));
                     }
                 } else {
-                    if is_public {
-                        items.push(quote!(#[macro_export] fn #method( #(#proto_params)* );));
-                    } else {
-                        items.push(quote!(fn #method( #(#proto_params)* );));
+                    quote! {
+                        macro_rules! #macro_name {
+                            #match_arms
+                        }
                     }
-                }
+                };
+                
+                items.push(macro_def);
             }
 
             // Strip marker attrs from the output impl so the compiler never has to resolve them.
@@ -450,16 +473,10 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
 
             strip_block_attr(&mut item_impl.attrs);
 
-            let tail_define_block = if items.is_empty() {
-                quote!()
-            } else {
-                quote!(#crate_path::define!( #(#items)* );)
-            };
-
             let out = quote! {
                 #item_impl
                 #(#warnings)*
-                #tail_define_block
+                #(#items)*
             };
             // eprintln!("BLOCK {}", &out);
             out.into()
@@ -765,8 +782,8 @@ mod tests {
         let output = block_impl(empty_attr, input_ts);
         let output_str = output.to_string();
         
-        // Expected output: impl block + define! macro call
-        let expected = r#"impl A { pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } } :: bobtail :: define ! (# [macro_export] fn b (& self , a : u8 , # [tail] b : Option < u8 > ,) -> u8 ;) ;"#;
+        // Expected output: impl block + explicit macro_rules! with match arms
+        let expected = r#"impl A { pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 { b . map (| x | x + a) . unwrap_or (a) } } # [macro_export] macro_rules ! b { ($ self_ : expr , $ arg_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ; ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ; }"#;
         assert_eq!(output_str.trim(), expected.trim());
     }
 
