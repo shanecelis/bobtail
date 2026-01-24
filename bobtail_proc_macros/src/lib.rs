@@ -14,7 +14,7 @@ use syn::{
     punctuated::Punctuated,
     spanned::Spanned,
     Attribute, Error, Ident, ImplItem, ImplItemMethod, Item, ItemFn, Meta, NestedMeta, Pat, Result,
-    Token,
+    Token, Visibility,
 };
 
 fn bobtail_path() -> Result<proc_macro2::TokenStream> {
@@ -222,6 +222,7 @@ pub fn bob(attr: TokenStream, item: TokenStream) -> TokenStream {
                 };
             }
         };
+        // println!("BOB {}", &out);
         out.into()
     } else {
         // Otherwise, treat it as an `impl` method marker (consumed by `#[bobtail::block]`).
@@ -369,22 +370,44 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     syn::ReturnType::Type(_, ty) => Some(ty.as_ref()),
                 };
 
+                // Check if the method is public
+                let is_public = matches!(method_fn.vis, Visibility::Public(_));
+
                 // Emit as a define item (method prototype).
                 let method = &spec.method;
                 // Store warnings separately to emit before the define! block
                 if let Some(warning) = method_warning {
                     warnings.push(quote!(#warning));
                 }
+                
+                // Add #[macro_export] attribute if the method is public
+                // Format it properly so it's parsed as an outer attribute
                 if let Some(mac) = &spec.macro_name {
                     if let Some(ret) = out_ty {
-                        items.push(quote!(#mac => fn #method( #(#proto_params)* ) -> #ret;));
+                        if is_public {
+                            items.push(quote!(#[macro_export] #mac => fn #method( #(#proto_params)* ) -> #ret;));
+                        } else {
+                            items.push(quote!(#mac => fn #method( #(#proto_params)* ) -> #ret;));
+                        }
                     } else {
-                        items.push(quote!(#mac => fn #method( #(#proto_params)* );));
+                        if is_public {
+                            items.push(quote!(#[macro_export] #mac => fn #method( #(#proto_params)* );));
+                        } else {
+                            items.push(quote!(#mac => fn #method( #(#proto_params)* );));
+                        }
                     }
                 } else if let Some(ret) = out_ty {
-                    items.push(quote!(fn #method( #(#proto_params)* ) -> #ret;));
+                    if is_public {
+                        items.push(quote!(#[macro_export] fn #method( #(#proto_params)* ) -> #ret;));
+                    } else {
+                        items.push(quote!(fn #method( #(#proto_params)* ) -> #ret;));
+                    }
                 } else {
-                    items.push(quote!(fn #method( #(#proto_params)* );));
+                    if is_public {
+                        items.push(quote!(#[macro_export] fn #method( #(#proto_params)* );));
+                    } else {
+                        items.push(quote!(fn #method( #(#proto_params)* );));
+                    }
                 }
             }
 
@@ -415,6 +438,7 @@ pub fn block(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 #(#warnings)*
                 #tail_define_block
             };
+            // eprintln!("BLOCK {}", &out);
             out.into()
         }
         other => Error::new(
@@ -590,5 +614,7 @@ pub fn define(input: TokenStream) -> TokenStream {
         });
     }
 
+    // eprintln!("DEFINE {}", &out);
+    // dbg!(out.into())
     out.into()
 }
