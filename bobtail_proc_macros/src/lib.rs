@@ -914,6 +914,29 @@ mod tests {
     }
 
     #[test]
+    fn test_manual_macro() {
+        fn f (a : u8 , b : Option < u8 >) -> u8 {
+            b . map (| x | x + a) . unwrap_or (a)
+        }
+        macro_rules ! f {
+            (@handle_tail _) => { ::core::default::Default::default() };
+            (@handle_tail $e:expr) => { ::core::convert::From::from($e) };
+            ($ arg_0 : expr) => {
+                f ($ arg_0 , :: core :: default :: Default :: default ())
+            } ;
+            ($ arg_0 : expr , $ tail_0 : tt) => {
+                f ($ arg_0 , f!(@handle_tail $ tail_0))
+            } ;
+        }
+        assert_eq!(f(0, Some(1)), 1);
+        assert_eq!(f(0, None), 0);
+        assert_eq!(f!(0, 1), 1);
+        assert_eq!(f!(0), 0);
+        assert_eq!(f!(0, _), 0);
+    }
+
+
+    #[test]
     fn test_bob_macro_output() {
         let input = r#"
             fn f(a: u8, #[tail] b: Option<u8>) -> u8 {
