@@ -783,23 +783,15 @@ mod tests {
         fn f (a : u8 , b : Option < u8 >) -> u8 {
             b . map (| x | x + a) . unwrap_or (a)
         }
-// macro_rules! m_vec {
-//     ( $( ( $($x:tt)+ ) ),* $(,)? ) => {{
-//         vec![
-//             $(
-//                 { $($x)+ }
-//             ),*
-//         ]
-//     }};
-// }
         macro_rules ! f {
-            (@handle_tail { _ }) => { ::core::default::Default::default() };
-            (@handle_tail { $($e:tt)+ }) => { ::core::convert::From::from($($e)+) };
             ($ arg_0 : expr) => {
                 f ($ arg_0 , :: core :: default :: Default :: default ())
             } ;
-            ($ arg_0 : expr , $($tail:tt)+) => {
-                f ($ arg_0 , f!(@handle_tail { $($tail)+ }))
+            ($ arg_0 : expr , _ ) => {
+                f ($ arg_0 ,  :: core :: default :: Default :: default ())
+            } ;
+            ($ arg_0 : expr , $t0:expr) => {
+                f ($ arg_0 , ::core::convert::From::from($t0))
             } ;
         }
         assert_eq!(f(0, Some(1)), 1);
@@ -808,6 +800,49 @@ mod tests {
         assert_eq!(f!(0, 1 + 2), 3);
         assert_eq!(f!(0), 0);
         assert_eq!(f!(0, _), 0);
+    }
+
+    #[test]
+    fn test_manual_macro_two_tail_args() {
+        fn f (a : u8 , b : Option < u8 >, c: Option<u8>) -> u8 {
+            b . map (| x | x + a). unwrap_or (a) + c.unwrap_or_default()
+        }
+        macro_rules ! f {
+            ($ arg_0 : expr) => {
+                f ($ arg_0 , :: core :: default :: Default :: default (), :: core :: default :: Default :: default ())
+            } ;
+            // it takes 6 cases to cover 2 optional arguments.
+            // Here are the 2^1 cases.
+            ($ arg_0 : expr , _ ) => {
+                f ($ arg_0 , :: core :: default :: Default :: default (), :: core :: default :: Default :: default ())
+            } ;
+            ($ arg_0 : expr , $t0:expr) => {
+                f ($ arg_0 , ::core::convert::From::from($t0), :: core :: default :: Default :: default ())
+            } ;
+            // Here are the 2^n cases.
+            //
+            // So the total is actually $\sum_1^n 2^n cases$. Ugh.
+            ($ arg_0 : expr , _, _ ) => {
+                f ($ arg_0 , :: core :: default :: Default :: default (), :: core :: default :: Default :: default ())
+            } ;
+            ($ arg_0 : expr , $t0:expr, _) => {
+                f ($ arg_0 , ::core::convert::From::from($t0), :: core :: default :: Default :: default ())
+            } ;
+            ($ arg_0 : expr , _, $t0:expr) => {
+                f ($ arg_0 , :: core :: default :: Default :: default (), ::core::convert::From::from($t0))
+            } ;
+            ($ arg_0 : expr , $t0:expr, $t1:expr) => {
+                f ($ arg_0 , ::core::convert::From::from($t0), ::core::convert::From::from($t1))
+            } ;
+        }
+        assert_eq!(f(0, Some(1), None), 1);
+        assert_eq!(f(0, None, None), 0);
+        assert_eq!(f!(0, 1), 1);
+        assert_eq!(f!(0, 1 + 2), 3);
+        assert_eq!(f!(0), 0);
+        assert_eq!(f!(0, _), 0);
+        assert_eq!(f!(0, _, 2), 2);
+        assert_eq!(f!(0, _, Some(2)), 2);
     }
 
 
