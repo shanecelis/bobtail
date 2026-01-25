@@ -977,8 +977,8 @@ fn f (a : u8 , b : Option < u8 >) -> u8 {
   b . map (| x | x + a) . unwrap_or (a)
 }
 macro_rules ! f {
-  ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
-  ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
+  ($ arg_0 : expr $ (,) ?) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+  ($ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
 }"#;
         #[cfg(feature = "omit-token")]
         let expected = r#"
@@ -986,7 +986,7 @@ fn f (a : u8 , b : Option < u8 >) -> u8 {
   b . map (| x | x + a) . unwrap_or (a)
 }
 macro_rules ! f {
-  ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+  ($ arg_0 : expr $ (,) ?) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
   ($ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (fn f ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
 }"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
@@ -1017,8 +1017,8 @@ impl A {
     b . map (| x | x + a) . unwrap_or (a) }
   }
   # [macro_export] macro_rules ! b {
-    ($ self_ : expr , $ arg_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
-    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
+    ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
 }"#;
         #[cfg(feature = "omit-token")]
         let expected = r#"
@@ -1027,7 +1027,7 @@ impl A {
     b . map (| x | x + a) . unwrap_or (a) }
   }
   # [macro_export] macro_rules ! b {
-    ($ self_ : expr , $ arg_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+    ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
     ($ self_ : expr , $ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (method $ self_ , b ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
 }"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
@@ -1047,13 +1047,13 @@ impl A {
         #[cfg(not(feature = "omit-token"))]
         let expected = r#"
 macro_rules ! f {
-  ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
-  ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
+  ($ arg_0 : expr $ (,) ?) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+  ($ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
 }"#;
         #[cfg(feature = "omit-token")]
         let expected = r#"
 macro_rules ! f {
-  ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+  ($ arg_0 : expr $ (,) ?) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
   ($ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (fn f ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
 }"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
