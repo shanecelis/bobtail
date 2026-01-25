@@ -31,11 +31,11 @@ macro_rules! __bobtail_munch {
         $crate::__bobtail_munch!(fn $fn; [$($args)* ::core::default::Default::default(),]; [$($ds)*]; $($rest)+)
     };
     // Process `_` placeholder as last user input (with remaining defaults)
-    (fn $fn:path; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; _) => {
+    (fn $fn:path; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; _ $(,)?) => {
         $crate::__bobtail_munch!(fn $fn; [$($args)* ::core::default::Default::default(),]; [$($ds)*];)
     };
     // Process `_` placeholder as last user input (no remaining defaults)
-    (fn $fn:path; [$($args:tt)*]; [$_d:expr]; _) => {
+    (fn $fn:path; [$($args:tt)*]; [$_d:expr]; _ $(,)?) => {
         $crate::__bobtail_munch!(fn $fn; [$($args)* ::core::default::Default::default(),]; [];)
     };
     
@@ -44,11 +44,11 @@ macro_rules! __bobtail_munch {
         $crate::__bobtail_munch!(fn $fn; [$($args)* ::core::convert::From::from($arg),]; [$($ds)*]; $($rest)+)
     };
     // Process expression as last user input (with remaining defaults)
-    (fn $fn:path; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; $arg:expr) => {
+    (fn $fn:path; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; $arg:expr $(,)?) => {
         $crate::__bobtail_munch!(fn $fn; [$($args)* ::core::convert::From::from($arg),]; [$($ds)*];)
     };
     // Process expression as last user input (no remaining defaults)
-    (fn $fn:path; [$($args:tt)*]; [$_d:expr]; $arg:expr) => {
+    (fn $fn:path; [$($args:tt)*]; [$_d:expr]; $arg:expr $(,)?) => {
         $crate::__bobtail_munch!(fn $fn; [$($args)* ::core::convert::From::from($arg),]; [];)
     };
     
@@ -64,11 +64,11 @@ macro_rules! __bobtail_munch {
         $crate::__bobtail_munch!(method $self, $method; [$($args)* ::core::default::Default::default(),]; [$($ds)*]; $($rest)+)
     };
     // Process `_` placeholder as last user input (with remaining defaults)
-    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; _) => {
+    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; _ $(,)?) => {
         $crate::__bobtail_munch!(method $self, $method; [$($args)* ::core::default::Default::default(),]; [$($ds)*];)
     };
     // Process `_` placeholder as last user input (no remaining defaults)
-    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr]; _) => {
+    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr]; _ $(,)?) => {
         $crate::__bobtail_munch!(method $self, $method; [$($args)* ::core::default::Default::default(),]; [];)
     };
     
@@ -77,11 +77,11 @@ macro_rules! __bobtail_munch {
         $crate::__bobtail_munch!(method $self, $method; [$($args)* ::core::convert::From::from($arg),]; [$($ds)*]; $($rest)+)
     };
     // Process expression as last user input (with remaining defaults)
-    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; $arg:expr) => {
+    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr, $($ds:tt)*]; $arg:expr $(,)?) => {
         $crate::__bobtail_munch!(method $self, $method; [$($args)* ::core::convert::From::from($arg),]; [$($ds)*];)
     };
     // Process expression as last user input (no remaining defaults)
-    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr]; $arg:expr) => {
+    (method $self:expr, $method:ident; [$($args:tt)*]; [$_d:expr]; $arg:expr $(,)?) => {
         $crate::__bobtail_munch!(method $self, $method; [$($args)* ::core::convert::From::from($arg),]; [];)
     };
 }

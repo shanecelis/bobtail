@@ -77,10 +77,12 @@ fn tail_define_individual_method_with_explicit_macro_name() {
     let mut pico = Pico8::default();
     sset_macro_one!(pico, (0, 0)).unwrap();
     sset_macro_one!(pico, (0, 0), PColor(1)).unwrap();
+    // Permit comma.
+    sset_macro_one!(pico, (0, 0), PColor(1),).unwrap();
     // Note: `_` placeholder requires the `omit-token` feature
     // sset_macro_one!(pico, (0, 0), _, 3usize).unwrap();
     sset_macro_one!(pico, (0, 0), None, 3usize).unwrap();
-    assert_eq!(pico.last, vec!["sset", "sset", "sset"]);
+    assert_eq!(pico.last, vec!["sset", "sset", "sset", "sset"]);
 }
 
 #[test]

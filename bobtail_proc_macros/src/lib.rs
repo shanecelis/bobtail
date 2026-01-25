@@ -147,7 +147,7 @@ fn generate_fn_match_arms(
                 call_args.push(quote!(::core::default::Default::default()));
             }
             
-            let pattern = build_pattern(&pattern_parts);
+            let pattern = build_pattern(&pattern_parts, true);
             let call = build_call(fn_name, &call_args);
             match_arms.extend(quote! { #pattern => { #call }; });
         }
@@ -169,7 +169,8 @@ fn generate_fn_match_arms(
             // Capture all remaining tokens as tail args
             pattern_parts.push(quote!($($__tail:tt)+));
             
-            let pattern = build_pattern(&pattern_parts);
+            // Don't add trailing comma to patterns with $($__tail:tt)+ to avoid ambiguity
+            let pattern = build_pattern(&pattern_parts, false);
             
             // Build defaults list for munch
             let mut defaults = proc_macro2::TokenStream::new();
@@ -218,7 +219,7 @@ fn generate_fn_match_arms(
                 call_args.push(quote!(::core::default::Default::default()));
             }
             
-            let pattern = build_pattern(&pattern_parts);
+            let pattern = build_pattern(&pattern_parts, true);
             let call = build_call(fn_name, &call_args);
             match_arms.extend(quote! { #pattern => { #call }; });
         }
@@ -256,7 +257,7 @@ fn generate_method_match_arms(
                 call_args.push(quote!(::core::default::Default::default()));
             }
             
-            let pattern = build_pattern(&pattern_parts);
+            let pattern = build_pattern(&pattern_parts, true);
             let call = build_method_call(fn_name, &call_args);
             match_arms.extend(quote! { #pattern => { #call }; });
         }
@@ -279,7 +280,8 @@ fn generate_method_match_arms(
             
             pattern_parts.push(quote!($($__tail:tt)+));
             
-            let pattern = build_pattern(&pattern_parts);
+            // Don't add trailing comma to patterns with $($__tail:tt)+ to avoid ambiguity
+            let pattern = build_pattern(&pattern_parts, false);
             
             let mut defaults = proc_macro2::TokenStream::new();
             for i in 0..tail_count {
@@ -328,7 +330,7 @@ fn generate_method_match_arms(
                 call_args.push(quote!(::core::default::Default::default()));
             }
             
-            let pattern = build_pattern(&pattern_parts);
+            let pattern = build_pattern(&pattern_parts, true);
             let call = build_method_call(fn_name, &call_args);
             match_arms.extend(quote! { #pattern => { #call }; });
         }
@@ -338,7 +340,9 @@ fn generate_method_match_arms(
 }
 
 /// Helper to build a macro pattern from parts
-fn build_pattern(parts: &[proc_macro2::TokenStream]) -> proc_macro2::TokenStream {
+/// If `allow_trailing_comma` is true, adds `$(,)?` at the end for optional trailing comma support.
+/// This should be false for patterns ending with `$($...:tt)+` to avoid ambiguity.
+fn build_pattern(parts: &[proc_macro2::TokenStream], allow_trailing_comma: bool) -> proc_macro2::TokenStream {
     use proc_macro2::{Delimiter, TokenTree};
     
     if parts.is_empty() {
@@ -350,6 +354,10 @@ fn build_pattern(parts: &[proc_macro2::TokenStream]) -> proc_macro2::TokenStream
             if !first { inner.extend(quote!(,)); }
             inner.extend(part.clone());
             first = false;
+        }
+        // Add optional trailing comma support if requested
+        if allow_trailing_comma {
+            inner.extend(quote!($(,)?));
         }
         let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
         let mut pat_ts = proc_macro2::TokenStream::new();

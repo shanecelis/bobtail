@@ -1,21 +1,10 @@
-error: no rules expected `,`
-  --> tests/ui/too_many_optionals.rs:21:35
+error: no rules expected `3usize`
+  --> tests/ui/too_many_optionals.rs:21:37
    |
  8 | bobtail::define! {
    | ---------------- when calling this macro
 ...
 21 |     sset!(pico, (0,0), 1u8, 2usize, 3usize).unwrap();
-   |                                   ^ no rules expected this token in macro call
+   |                                     ^^^^^^ no rules expected this token in macro call
    |
-note: while trying to match meta-variable `$tail_1:expr`
-  --> tests/ui/too_many_optionals.rs:8:1
-   |
- 8 | / bobtail::define! {
- 9 | |     sset => fn sset(
-10 | |         &mut self,
-11 | |         pos: (u32, u32),
-...  |
-15 | |     ) -> Result<(), ()>;
-16 | | }
-   | |_^
-   = note: this error originates in the macro `bobtail::define` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: while trying to match sequence end

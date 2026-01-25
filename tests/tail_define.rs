@@ -124,6 +124,8 @@ fn tail_define_individual_free_function() {
     assert_eq!(prnt!((0, 0), PColor(7)), x);
     assert_eq!(prnt!((0, 0), PColor(7), 8u8), MyInput(8));
     assert_eq!(prnt!((0, 0), PColor(7), MyInput(9)), MyInput(9));
+    // Permit comma.
+    assert_eq!(prnt!((0, 0), PColor(7), MyInput(9),), MyInput(9));
     assert_eq!(prnt_all!((0, 0), PColor(7), MyInput(9)), MyInput(9));
     // Note: `_` placeholder requires the `omit-token` feature
     // assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
@@ -161,5 +163,9 @@ mod omit_token_tests {
     #[test]
     fn test_underscore_placeholder_function() {
         assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
+        // One trailing comma is fine.
+        assert_eq!(prnt_all!((0, 0), PColor(7), _,), MyInput(0));
+        // Two trailing commas is not fine.
+        // assert_eq!(prnt_all!((0, 0), PColor(7), _,,), MyInput(0));
     }
 }
