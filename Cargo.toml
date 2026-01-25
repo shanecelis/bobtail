@@ -1,6 +1,6 @@
 [package]
 name = "bobtail"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Generate macro proxies of functions whose tails can be \"bobbed\" as in cut off"
@@ -30,7 +30,7 @@ omit-token = ["bobtail_proc_macros/omit-token"]
 path = "src/lib.rs"
 
 [dependencies]
-bobtail_proc_macros = { version = "0.2.0", path = "bobtail_proc_macros" }
+bobtail_proc_macros = { version = "0.3.0", path = "bobtail_proc_macros" }
 
 [dev-dependencies]
 trybuild = "1"

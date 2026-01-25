@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "bobtail"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bobtail_proc_macros",
  "proc-macro2",
@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "bobtail_proc_macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-warning",

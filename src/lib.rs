@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/bobtail/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/bobtail/0.3.0")]
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 #![forbid(missing_docs)]
