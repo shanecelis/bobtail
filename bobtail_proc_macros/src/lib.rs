@@ -934,11 +934,8 @@ mod tests {
             ($ arg_0 : expr) => {
                 f ($ arg_0 , :: core :: default :: Default :: default ())
             } ;
-            ($ arg_0 : expr , $( $($tail:tt)+ ),* $(,)?) => {
-                f ($ arg_0 ,
-            $(
-                f!(@handle_tail { $($tail)+ })
-            ),*)
+            ($ arg_0 : expr , $($tail:tt)+) => {
+                f ($ arg_0 , f!(@handle_tail { $($tail)+ }))
             } ;
         }
         assert_eq!(f(0, Some(1)), 1);
