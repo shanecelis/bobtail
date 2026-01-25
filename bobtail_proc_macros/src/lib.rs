@@ -217,15 +217,16 @@ fn bob_impl(attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> p
         let fn_name = &fun.sig.ident;
         let mut match_arms = proc_macro2::TokenStream::new();
         
-        // Add internal helper rule for handling `_` and expressions
+        // Add internal helper rules: { _ } for default, { tokens } for expressions
         if tail_count > 0 {
             match_arms.extend(quote! {
-                (@handle_tail _) => { ::core::default::Default::default() };
-                (@handle_tail $e:expr) => { ::core::convert::From::from($e) };
+                (@handle_tail { _ }) => { ::core::default::Default::default() };
+                (@handle_tail { $($e:tt)+ }) => { ::core::convert::From::from($($e)+) };
             });
         }
         
-        // First: Generate explicit patterns with :expr for tail args (handles expressions like `PColor(1)`)
+        // Generate one pattern per count of provided tail args
+        // Use $($tail_N:tt)+ to capture one or more tokens (handles both expressions and `_`)
         for provided_tail_count in 0..=tail_count {
             let mut pattern_parts = Vec::new();
             let mut call_args = Vec::new();
@@ -236,11 +237,12 @@ fn bob_impl(attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> p
                 call_args.push(quote!($#ident));
             }
             
-            // Use :expr for tail args (matches expressions)
+            // Use $($tail_N:tt)+ for each tail arg - captures multiple tokens
             for i in 0..provided_tail_count {
                 let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
-                pattern_parts.push(quote!($#ident:expr));
-                call_args.push(quote!(::core::convert::From::from($#ident)));
+                pattern_parts.push(quote!($($#ident:tt)+));
+                // Wrap in braces and delegate to @handle_tail
+                call_args.push(quote!(#macro_name!(@handle_tail { $($#ident)+ })));
             }
             
             for _ in provided_tail_count..tail_count {
@@ -274,52 +276,6 @@ fn bob_impl(attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> p
                 }
                 quote!(#fn_name(#args_ts))
             };
-            
-            match_arms.extend(quote! { #pattern => { #call }; });
-        }
-        
-        // Second: Generate patterns with :tt for tail args (handles `_` which can't match :expr)
-        // These come after :expr patterns, so they only match when :expr fails
-        for provided_tail_count in 1..=tail_count {
-            let mut pattern_parts = Vec::new();
-            let mut call_args = Vec::new();
-            
-            for i in 0..req_count {
-                let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
-                pattern_parts.push(quote!($#ident:expr));
-                call_args.push(quote!($#ident));
-            }
-            
-            // Use :tt for tail args (can match `_`)
-            for i in 0..provided_tail_count {
-                let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
-                pattern_parts.push(quote!($#ident:tt));
-                call_args.push(quote!(#macro_name!(@handle_tail $#ident)));
-            }
-            
-            for _ in provided_tail_count..tail_count {
-                call_args.push(quote!(::core::default::Default::default()));
-            }
-            
-            use proc_macro2::{Delimiter, TokenTree};
-            let mut inner = proc_macro2::TokenStream::new();
-            let mut first = true;
-            for part in pattern_parts.iter() {
-                if !first { inner.extend(quote!(,)); }
-                inner.extend(part.clone());
-                first = false;
-            }
-            let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
-            let mut pat_ts = proc_macro2::TokenStream::new();
-            pat_ts.extend(std::iter::once(TokenTree::Group(group)));
-            let pattern = pat_ts;
-            
-            let first_arg = call_args.first().unwrap();
-            let mut args_ts = quote!(#first_arg);
-            for arg in call_args.iter().skip(1) {
-                args_ts.extend(quote!(, #arg));
-            }
-            let call = quote!(#fn_name(#args_ts));
             
             match_arms.extend(quote! { #pattern => { #call }; });
         }
@@ -467,15 +423,15 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                 
                 let mut match_arms = proc_macro2::TokenStream::new();
                 
-                // Add internal helper rule for handling `_` and expressions
+                // Add internal helper rules: { _ } for default, { tokens } for expressions
                 if tail_count > 0 {
                     match_arms.extend(quote! {
-                        (@handle_tail _) => { ::core::default::Default::default() };
-                        (@handle_tail $e:expr) => { ::core::convert::From::from($e) };
+                        (@handle_tail { _ }) => { ::core::default::Default::default() };
+                        (@handle_tail { $($e:tt)+ }) => { ::core::convert::From::from($($e)+) };
                     });
                 }
                 
-                // First: Generate explicit patterns with :expr for tail args
+                // Generate one pattern per count of provided tail args
                 for provided_tail_count in 0..=tail_count {
                     let mut pattern_parts = Vec::new();
                     let mut call_args = Vec::new();
@@ -488,10 +444,11 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                         call_args.push(quote!($#ident));
                     }
                     
+                    // Use $($tail_N:tt)+ for each tail arg
                     for i in 0..provided_tail_count {
                         let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
-                        pattern_parts.push(quote!($#ident:expr));
-                        call_args.push(quote!(::core::convert::From::from($#ident)));
+                        pattern_parts.push(quote!($($#ident:tt)+));
+                        call_args.push(quote!(#macro_name!(@handle_tail { $($#ident)+ })));
                     }
                     
                     for _ in provided_tail_count..tail_count {
@@ -521,52 +478,6 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                         }
                         quote!($self_.#fn_name(#args_ts))
                     };
-                    
-                    match_arms.extend(quote! { #pattern => { #call }; });
-                }
-                
-                // Second: Generate patterns with :tt for tail args (handles `_`)
-                for provided_tail_count in 1..=tail_count {
-                    let mut pattern_parts = Vec::new();
-                    let mut call_args = Vec::new();
-                    
-                    pattern_parts.push(quote!($self_:expr));
-                    
-                    for i in 0..req_count {
-                        let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
-                        pattern_parts.push(quote!($#ident:expr));
-                        call_args.push(quote!($#ident));
-                    }
-                    
-                    for i in 0..provided_tail_count {
-                        let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
-                        pattern_parts.push(quote!($#ident:tt));
-                        call_args.push(quote!(#macro_name!(@handle_tail $#ident)));
-                    }
-                    
-                    for _ in provided_tail_count..tail_count {
-                        call_args.push(quote!(::core::default::Default::default()));
-                    }
-                    
-                    use proc_macro2::{Delimiter, TokenTree};
-                    let mut inner = proc_macro2::TokenStream::new();
-                    let mut first = true;
-                    for part in pattern_parts.iter() {
-                        if !first { inner.extend(quote!(,)); }
-                        inner.extend(part.clone());
-                        first = false;
-                    }
-                    let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
-                    let mut pat_ts = proc_macro2::TokenStream::new();
-                    pat_ts.extend(std::iter::once(TokenTree::Group(group)));
-                    let pattern = pat_ts;
-                    
-                    let first_arg = call_args.first().unwrap();
-                    let mut args_ts = quote!(#first_arg);
-                    for arg in call_args.iter().skip(1) {
-                        args_ts.extend(quote!(, #arg));
-                    }
-                    let call = quote!($self_.#fn_name(#args_ts));
                     
                     match_arms.extend(quote! { #pattern => { #call }; });
                 }
@@ -775,15 +686,15 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         // Generate self-contained macro with internal helper rules for `_` handling
         let mut match_arms = proc_macro2::TokenStream::new();
         
-        // Add internal helper rule for handling `_` and expressions
+        // Add internal helper rules: { _ } for default, { tokens } for expressions
         if tail_count > 0 {
             match_arms.extend(quote! {
-                (@handle_tail _) => { ::core::default::Default::default() };
-                (@handle_tail $e:expr) => { ::core::convert::From::from($e) };
+                (@handle_tail { _ }) => { ::core::default::Default::default() };
+                (@handle_tail { $($e:tt)+ }) => { ::core::convert::From::from($($e)+) };
             });
         }
         
-        // First: Generate explicit patterns with :expr for tail args
+        // Generate one pattern per count of provided tail args
         for provided_tail_count in 0..=tail_count {
             let mut pattern_parts = Vec::new();
             let mut call_args = Vec::new();
@@ -798,10 +709,11 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
                 call_args.push(quote!($#ident));
             }
             
+            // Use $($tail_N:tt)+ for each tail arg
             for i in 0..provided_tail_count {
                 let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
-                pattern_parts.push(quote!($#ident:expr));
-                call_args.push(quote!(::core::convert::From::from($#ident)));
+                pattern_parts.push(quote!($($#ident:tt)+));
+                call_args.push(quote!(#macro_name!(@handle_tail { $($#ident)+ })));
             }
             
             for _ in provided_tail_count..tail_count {
@@ -835,54 +747,6 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
                 }
                 if has_receiver { quote!($self_.#fn_name(#args_ts)) } else { quote!(#fn_name(#args_ts)) }
             };
-            
-            match_arms.extend(quote! { #pattern => { #call }; });
-        }
-        
-        // Second: Generate patterns with :tt for tail args (handles `_`)
-        for provided_tail_count in 1..=tail_count {
-            let mut pattern_parts = Vec::new();
-            let mut call_args = Vec::new();
-            
-            if has_receiver {
-                pattern_parts.push(quote!($self_:expr));
-            }
-            
-            for i in 0..req_count {
-                let ident = Ident::new(&format!("arg_{}", i), Span::call_site());
-                pattern_parts.push(quote!($#ident:expr));
-                call_args.push(quote!($#ident));
-            }
-            
-            for i in 0..provided_tail_count {
-                let ident = Ident::new(&format!("tail_{}", i), Span::call_site());
-                pattern_parts.push(quote!($#ident:tt));
-                call_args.push(quote!(#macro_name!(@handle_tail $#ident)));
-            }
-            
-            for _ in provided_tail_count..tail_count {
-                call_args.push(quote!(::core::default::Default::default()));
-            }
-            
-            use proc_macro2::{Delimiter, TokenTree};
-            let mut inner = proc_macro2::TokenStream::new();
-            let mut first = true;
-            for part in pattern_parts.iter() {
-                if !first { inner.extend(quote!(,)); }
-                inner.extend(part.clone());
-                first = false;
-            }
-            let group = proc_macro2::Group::new(Delimiter::Parenthesis, inner);
-            let mut pat_ts = proc_macro2::TokenStream::new();
-            pat_ts.extend(std::iter::once(TokenTree::Group(group)));
-            let pattern = pat_ts;
-            
-            let first_arg = call_args.first().unwrap();
-            let mut args_ts = quote!(#first_arg);
-            for arg in call_args.iter().skip(1) {
-                args_ts.extend(quote!(, #arg));
-            }
-            let call = if has_receiver { quote!($self_.#fn_name(#args_ts)) } else { quote!(#fn_name(#args_ts)) };
             
             match_arms.extend(quote! { #pattern => { #call }; });
         }
@@ -963,17 +827,15 @@ mod tests {
         let output_str = output.to_string();
         
         // Expected output: function definition + self-contained macro with internal helper rules
-        // First :expr patterns for expressions, then :tt patterns for `_`
         let expected = r#"
 fn f (a : u8 , b : Option < u8 >) -> u8 {
   b . map (| x | x + a) . unwrap_or (a)
 }
 macro_rules ! f {
-  (@ handle_tail _) => { :: core :: default :: Default :: default () } ;
-  (@ handle_tail $ e : expr) => { :: core :: convert :: From :: from ($ e) } ;
+  (@ handle_tail { _ }) => { :: core :: default :: Default :: default () } ;
+  (@ handle_tail { $ ($ e : tt) + }) => { :: core :: convert :: From :: from ($ ($ e) +) } ;
   ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
-  ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
-  ($ arg_0 : expr , $ tail_0 : tt) => { f ($ arg_0 , f ! (@ handle_tail $ tail_0)) } ;
+  ($ arg_0 : expr , $ ($ tail_0 : tt) +) => { f ($ arg_0 , f ! (@ handle_tail { $ ($ tail_0) + })) } ;
 }"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
@@ -1002,11 +864,10 @@ impl A {
     b . map (| x | x + a) . unwrap_or (a) }
   }
   # [macro_export] macro_rules ! b {
-    (@ handle_tail _) => { :: core :: default :: Default :: default () } ;
-    (@ handle_tail $ e : expr) => { :: core :: convert :: From :: from ($ e) } ;
+    (@ handle_tail { _ }) => { :: core :: default :: Default :: default () } ;
+    (@ handle_tail { $ ($ e : tt) + }) => { :: core :: convert :: From :: from ($ ($ e) +) } ;
     ($ self_ : expr , $ arg_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
-    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
-    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : tt) => { $ self_ . b ($ arg_0 , b ! (@ handle_tail $ tail_0)) } ;
+    ($ self_ : expr , $ arg_0 : expr , $ ($ tail_0 : tt) +) => { $ self_ . b ($ arg_0 , b ! (@ handle_tail { $ ($ tail_0) + })) } ;
 }"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
@@ -1024,11 +885,10 @@ impl A {
         // Expected output: self-contained macro with internal helper rules
         let expected = r#"
 macro_rules ! f {
-  (@ handle_tail _) => { :: core :: default :: Default :: default () } ;
-  (@ handle_tail $ e : expr) => { :: core :: convert :: From :: from ($ e) } ;
+  (@ handle_tail { _ }) => { :: core :: default :: Default :: default () } ;
+  (@ handle_tail { $ ($ e : tt) + }) => { :: core :: convert :: From :: from ($ ($ e) +) } ;
   ($ arg_0 : expr) => { f ($ arg_0 , :: core :: default :: Default :: default ()) } ;
-  ($ arg_0 : expr , $ tail_0 : expr) => { f ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
-  ($ arg_0 : expr , $ tail_0 : tt) => { f ($ arg_0 , f ! (@ handle_tail $ tail_0)) } ;
+  ($ arg_0 : expr , $ ($ tail_0 : tt) +) => { f ($ arg_0 , f ! (@ handle_tail { $ ($ tail_0) + })) } ;
 }"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
