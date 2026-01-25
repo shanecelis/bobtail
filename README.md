@@ -196,6 +196,47 @@ omittable arguments potentially using other crates like
 [typed-builder](https://crates.io/crates/typed-builder) and
 [derive_builder](https://crates.io/crates/derive_builder).
 
+## Features
+
+### `omit-token` - Enable `_` placeholder syntax
+
+If one wants to use `_` as a placeholder for default values anywhere in the tail
+arguments, enable the `omit-token` feature:
+
+```toml
+[dependencies]
+bobtail = { version = "0.2", features = ["omit-token"] }
+# OR
+bobtail = { version = "0.2" } # Since it is enabled by default.
+```
+
+With this feature enabled, you can write:
+
+```rust,ignore
+assert_eq!(f!(1, _), 1);         // Explicitly use default for second arg
+assert_eq!(f!(1, _, 3), ...);    // Use default for second, explicit third
+```
+
+Without the feature, you'll need to pass explicit default values:
+
+```rust,ignore
+assert_eq!(f!(1, None), 1);      // Explicitly pass None/default
+```
+
+The trade-off is that `omit-token` uses a recursive helper macro internally,
+which makes macro expansion slightly more complex. 
+
+#### Without `omit-token` feature
+
+Without the `omit-token` feature, bobtail generates self-contained and
+straightforward to inspect macros, but one cannot use the underscore '_' to omit
+values.
+
+```toml
+[dependencies]
+bobtail = { version = "0.2", default-features = false }
+```
+
 ## Install
 
 Add bobtail to a project with the following command:

@@ -1,17 +1,15 @@
-error: missing required arguments
-  --> tests/ui/warn_no_tail_bob.rs:16:13
+error: unexpected end of macro invocation
+  --> tests/ui/warn_no_tail_bob.rs:16:17
    |
+ 5 | #[bobtail::bob]
+   | --------------- when calling this macro
+...
 16 |     let _ = f!(1);
-   |             ^^^^^
+   |                 ^ missing tokens in macro arguments
    |
-   = note: this error originates in the macro `$crate::__bobtail_munch` which comes from the expansion of the macro `f` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-warning: use of deprecated constant `f_no_tail::_w`:
-                 It is deprecated to using `f` without `#[tail]` attribute.
-                 Please instead add `#[tail]` to make trailing arguments optional.
- --> tests/ui/warn_no_tail_bob.rs:6:4
-  |
-6 | fn f(a: u8, b: Option<u8>) -> u8 {
-  |    ^
-  |
-  = note: `#[warn(deprecated)]` on by default
+note: while trying to match `,`
+  --> tests/ui/warn_no_tail_bob.rs:5:1
+   |
+ 5 | #[bobtail::bob]
+   | ^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `bobtail::bob` (in Nightly builds, run with -Z macro-backtrace for more info)

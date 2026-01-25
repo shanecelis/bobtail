@@ -1,7 +1,17 @@
-error: missing required arguments
-  --> tests/ui/warn_no_tail_define.rs:19:13
+error: unexpected end of macro invocation
+  --> tests/ui/warn_no_tail_define.rs:19:17
    |
+ 9 | bobtail::define! {
+   | ---------------- when calling this macro
+...
 19 |     let _ = f!(1);
-   |             ^^^^^
+   |                 ^ missing tokens in macro arguments
    |
-   = note: this error originates in the macro `$crate::__bobtail_munch` which comes from the expansion of the macro `f` (in Nightly builds, run with -Z macro-backtrace for more info)
+note: while trying to match `,`
+  --> tests/ui/warn_no_tail_define.rs:9:1
+   |
+ 9 | / bobtail::define! {
+10 | |     fn f(a: u8, b: Option<u8>) -> u8;
+11 | | }
+   | |_^
+   = note: this error originates in the macro `bobtail::define` (in Nightly builds, run with -Z macro-backtrace for more info)

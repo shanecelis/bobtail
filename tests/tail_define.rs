@@ -103,7 +103,9 @@ fn tail_define_individual_method_with_explicit_macro_name() {
     let mut pico = Pico8::default();
     sset_macro_one!(pico, (0, 0)).unwrap();
     sset_macro_one!(pico, (0, 0), PColor(1)).unwrap();
-    sset_macro_one!(pico, (0, 0), _, 3usize).unwrap();
+    // Note: `_` placeholder requires the `omit-token` feature
+    // sset_macro_one!(pico, (0, 0), _, 3usize).unwrap();
+    sset_macro_one!(pico, (0, 0), None, 3usize).unwrap();
     assert_eq!(pico.last, vec!["sset", "sset", "sset"]);
 }
 
@@ -123,8 +125,10 @@ fn tail_define_individual_free_function() {
     assert_eq!(prnt!((0, 0), PColor(7), 8u8), MyInput(8));
     assert_eq!(prnt!((0, 0), PColor(7), MyInput(9)), MyInput(9));
     assert_eq!(prnt_all!((0, 0), PColor(7), MyInput(9)), MyInput(9));
-    assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
-    assert_eq!(prnt_all!((0, 0), PColor(7), Default::default()), MyInput(0));
+    // Note: `_` placeholder requires the `omit-token` feature
+    // assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
+    assert_eq!(prnt_all!((0, 0), PColor(7), MyInput::default()), MyInput(0));
+    assert_eq!(prnt_all!((0, 0), PColor(7), MyInput::default()), MyInput(0));
     assert_eq!(
         prnt_any!((0, 0), Some(PColor(7)), Default::default()),
         MyInput(0)
@@ -140,4 +144,22 @@ fn tail_define_all_together() {
     assert_eq!(prnt_all!((9, 9)), x);
     assert_eq!(prnt!((9, 9)), x);
     assert_eq!(pico.last, vec!["sset", "sspr"]);
+}
+
+// Tests for `_` placeholder support (requires omit-token feature)
+#[cfg(feature = "omit-token")]
+mod omit_token_tests {
+    use super::*;
+
+    #[test]
+    fn test_underscore_placeholder_method() {
+        let mut pico = Pico8::default();
+        sset_macro_one!(pico, (0, 0), _, 3usize).unwrap();
+        assert_eq!(pico.last, vec!["sset"]);
+    }
+
+    #[test]
+    fn test_underscore_placeholder_function() {
+        assert_eq!(prnt_all!((0, 0), PColor(7), _), MyInput(0));
+    }
 }

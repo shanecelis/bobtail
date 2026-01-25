@@ -18,6 +18,11 @@ categories = [
 [lib]
 proc-macro = true
 
+[features]
+default = []
+# Enable `_` as a placeholder for default values in macro calls.
+omit-token = []
+
 [dependencies]
 proc-macro2 = "1"
 quote = "1"

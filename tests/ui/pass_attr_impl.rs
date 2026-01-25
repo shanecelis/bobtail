@@ -28,7 +28,8 @@ fn main() {
     let mut pico = Pico8::default();
     sset!(pico, (0, 0)).unwrap();
     sset!(pico, (1, 2), PColor(7u8)).unwrap();
-    sset!(pico, (3, 4), _, 9usize).unwrap();
+    // Note: `_` placeholder requires the `omit-token` feature
+    sset!(pico, (3, 4), None, 9usize).unwrap();
 }
 
 

@@ -24,5 +24,6 @@ bobtail::define! {
 fn main() {
     let mut pico = Pico8;
     let maybe_color: Option<PColor> = None;
-    sset!(pico, (0,0), maybe_color, _).unwrap();
+    // Note: `_` placeholder requires the `omit-token` feature
+    sset!(pico, (0,0), maybe_color, None).unwrap();
 }
