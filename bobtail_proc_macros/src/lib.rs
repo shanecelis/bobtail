@@ -180,8 +180,15 @@ fn generate_fn_match_arms(
                 defaults.extend(quote!(::core::default::Default::default()));
             }
             
-            let call = quote! {
-                #crate_path::__bobtail_munch!(fn #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
+            // Only add trailing comma if there are required args
+            let call = if req_count > 0 {
+                quote! {
+                    #crate_path::__bobtail_munch!(fn #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
+                }
+            } else {
+                quote! {
+                    #crate_path::__bobtail_munch!(fn #fn_name; []; [#defaults,]; $($__tail)+)
+                }
             };
             
             match_arms.extend(quote! { #pattern => { #call }; });
@@ -282,8 +289,15 @@ fn generate_method_match_arms(
                 defaults.extend(quote!(::core::default::Default::default()));
             }
             
-            let call = quote! {
-                #crate_path::__bobtail_munch!(method $self_, #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
+            // Only add trailing comma if there are required args
+            let call = if req_count > 0 {
+                quote! {
+                    #crate_path::__bobtail_munch!(method $self_, #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
+                }
+            } else {
+                quote! {
+                    #crate_path::__bobtail_munch!(method $self_, #fn_name; []; [#defaults,]; $($__tail)+)
+                }
             };
             
             match_arms.extend(quote! { #pattern => { #call }; });

@@ -1,0 +1,11 @@
+error: no rules expected `3usize`
+  --> tests/ui/omit-token/too_many_optionals.rs:21:37
+   |
+21 |     sset!(pico, (0,0), 1u8, 2usize, 3usize).unwrap();
+   |                                     ^^^^^^ no rules expected this token in macro call
+   |
+note: while trying to match `;`
+  --> src/lib.rs
+   |
+   |     (method $self:expr, $method:ident; [$($args:tt)*]; [$($defaults:tt)*];) => {
+   |                                                                          ^
