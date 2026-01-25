@@ -667,7 +667,6 @@ fn block_impl(_attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -
                 #(#warnings)*
                 #(#items)*
             };
-            // eprintln!("BLOCK {}", &out);
             out.into()
         }
         other => Error::new(
@@ -851,8 +850,6 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         });
     }
 
-    // eprintln!("DEFINE {}", &out);
-    // dbg!(out.into())
     out.into()
 }
 

@@ -21,7 +21,7 @@ categories = [
 members = ["bobtail_proc_macros"]
 
 [features]
-default = ["omit-token"]
+default = []
 # Enable `_` as a placeholder for default values in macro calls.
 # This uses a recursive helper macro (__bobtail_munch!) internally.
 omit-token = ["bobtail_proc_macros/omit-token"]

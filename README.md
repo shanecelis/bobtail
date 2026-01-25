@@ -27,6 +27,7 @@ bobtail::define! {
 }
 assert_eq!(f(1, Some(2)), 3);    // Call function.
 assert_eq!(f!(1), 1);            // Call macro with omission.
+#[cfg(feature = "omit-token")]
 assert_eq!(f!(1, _), 1);         // Call macro with explicit omission.
 assert_eq!(f!(1, 2), 3);         // Pass unwrapped second argument.
 # assert_eq!(f!(1, Some(2)), 3); // Pass wrapped second argument.
@@ -100,6 +101,7 @@ assert_eq!(a.b(1, Some(2)), 3);   // Call function.
 assert_eq!(b!(a, 1, Some(2)), 3); // Call macro.
 assert_eq!(b!(a, 1, 2), 3);       // Omit `Some`.
 assert_eq!(b!(a, 1), 1);          // Omit second argument.
+#[cfg(feature = "omit-token")]
 assert_eq!(b!(a, 1, _), 1);       // Explicitly omit second argument.
 assert_eq!(c_macro!(a, 4), 4);    // Consume self.
 
@@ -121,6 +123,7 @@ fn f(a: u8, #[tail] b: Option<u8>) -> u8 {
 
 assert_eq!(f(1, Some(2)), 3);    // Call function.
 assert_eq!(f!(1), 1);            // Call macro with omission.
+#[cfg(feature = "omit-token")]
 assert_eq!(f!(1, _), 1);         // Call macro with explicit omission.
 assert_eq!(f!(1, 2), 3);         // Pass unwrapped second argument.
 # assert_eq!(f!(1, Some(2)), 3); // Pass wrapped second argument.
@@ -152,6 +155,7 @@ assert_eq!(a.b(1, Some(2)), 3);   // Call function.
 assert_eq!(b!(a, 1, Some(2)), 3); // Call macro.
 assert_eq!(b!(a, 1, 2), 3);       // Omit `Some`.
 assert_eq!(b!(a, 1), 1);          // Omit second argument.
+#[cfg(feature = "omit-token")]
 assert_eq!(b!(a, 1, _), 1);       // Explicitly omit second argument.
 assert_eq!(c_macro!(a, 4), 4);    // Consume self.
 
