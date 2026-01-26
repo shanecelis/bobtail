@@ -4,7 +4,7 @@
 #![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
-use proc_macro2::{Ident as Ident2, Span};
+use proc_macro2::Span;
 #[cfg(not(test))]
 use proc_macro_crate::{crate_name, FoundCrate};
 use proc_macro_warning::Warning;
@@ -23,7 +23,6 @@ use syn::{
     ItemFn,
     Meta,
     NestedMeta,
-    Pat,
     Result,
     Token,
     Visibility,
@@ -53,20 +52,9 @@ fn bobtail_path() -> Result<proc_macro2::TokenStream> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 struct MethodSpec {
-    method: Ident,
     macro_name: Option<Ident>,
-    // conv: Vec<(Ident, Path)>,
-}
-
-impl MethodSpec {
-    fn new(method: Ident) -> Self {
-        Self {
-            method,
-            macro_name: None, //conv: Vec::new()
-        }
-    }
 }
 
 fn strip_block_attr(attrs: &mut Vec<Attribute>) {
@@ -131,8 +119,8 @@ fn parse_bob_attr_args(attr: proc_macro2::TokenStream) -> Result<Vec<NestedMeta>
 /// When `omit-token` feature is enabled, uses `__bobtail_munch!` for `_` support.
 /// When disabled, generates simple `:expr` patterns without `_` support.
 fn generate_fn_match_arms(
-    crate_path: &proc_macro2::TokenStream,
-    macro_name: &Ident,
+    _crate_path: &proc_macro2::TokenStream,
+    _macro_name: &Ident,
     fn_name: &Ident,
     req_count: usize,
     tail_count: usize,
@@ -195,11 +183,11 @@ fn generate_fn_match_arms(
             // Only add trailing comma if there are required args
             let call = if req_count > 0 {
                 quote! {
-                    #crate_path::__bobtail_munch!(fn #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
+                    #_crate_path::__bobtail_munch!(fn #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
                 }
             } else {
                 quote! {
-                    #crate_path::__bobtail_munch!(fn #fn_name; []; [#defaults,]; $($__tail)+)
+                    #_crate_path::__bobtail_munch!(fn #fn_name; []; [#defaults,]; $($__tail)+)
                 }
             };
 
@@ -241,8 +229,8 @@ fn generate_fn_match_arms(
 
 /// Generate match arms for a method macro.
 fn generate_method_match_arms(
-    crate_path: &proc_macro2::TokenStream,
-    macro_name: &Ident,
+    _crate_path: &proc_macro2::TokenStream,
+    _macro_name: &Ident,
     fn_name: &Ident,
     req_count: usize,
     tail_count: usize,
@@ -305,11 +293,11 @@ fn generate_method_match_arms(
             // Only add trailing comma if there are required args
             let call = if req_count > 0 {
                 quote! {
-                    #crate_path::__bobtail_munch!(method $self_, #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
+                    #_crate_path::__bobtail_munch!(method $self_, #fn_name; [#required_args,]; [#defaults,]; $($__tail)+)
                 }
             } else {
                 quote! {
-                    #crate_path::__bobtail_munch!(method $self_, #fn_name; []; [#defaults,]; $($__tail)+)
+                    #_crate_path::__bobtail_munch!(method $self_, #fn_name; []; [#defaults,]; $($__tail)+)
                 }
             };
 
@@ -429,16 +417,16 @@ fn bob_impl(
         // If it's a free function, generate the macro proxy right here.
         let crate_path = match bobtail_path() {
             Ok(p) => p,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
 
         let bob_args: Vec<NestedMeta> = match parse_bob_attr_args(attr) {
             Ok(v) => v,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
 
         let mut macro_name: Option<Ident> = None;
-        if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.get(0) {
+        if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.first() {
             if let Some(id) = p.get_ident() {
                 macro_name = Some(id.clone());
             }
@@ -457,8 +445,7 @@ fn bob_impl(
                 fun.sig.span(),
                 "#[bobtail::bob] on free functions cannot use a self receiver",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
 
         // Collect typed params and find tail start.
@@ -483,14 +470,12 @@ fn bob_impl(
         // Emit a warning if no #[tail] attribute is present
         let warning = if tail_start.is_none() && !typed.is_empty() {
             Some(
-                Warning::new_deprecated(&format!("{}_no_tail", fun.sig.ident))
-                    .old(&format!(
+                Warning::new_deprecated(format!("{}_no_tail", fun.sig.ident))
+                    .old(format!(
                         "using `{}` without `#[tail]` attribute",
                         fun.sig.ident
                     ))
-                    .new(&format!(
-                        "add `#[tail]` to make trailing arguments optional"
-                    ))
+                    .new("add `#[tail]` to make trailing arguments optional".to_string())
                     .span(fun.sig.ident.span())
                     .build_or_panic(),
             )
@@ -525,7 +510,7 @@ fn bob_impl(
             }
         };
         // println!("BOB {}", &out);
-        out.into()
+        out
     } else {
         // Otherwise, treat it as an `impl` method marker (consumed by `#[bobtail::block]`).
         let mut method: ImplItemMethod = match syn::parse2(item.clone()) {
@@ -552,12 +537,12 @@ fn block_impl(
 
     let crate_path = match bobtail_path() {
         Ok(p) => p,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let parsed: Item = match syn::parse2(item_ts.clone()) {
         Ok(it) => it,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     match parsed {
@@ -583,24 +568,23 @@ fn block_impl(
 
                 let bob_args: Vec<NestedMeta> = match parse_attr_args(&bob_attr) {
                     Ok(v) => v,
-                    Err(e) => return e.to_compile_error().into(),
+                    Err(e) => return e.to_compile_error(),
                 };
 
                 // Default macro name = method name, unless `#[bobtail::bob(name)]`.
-                let mut spec = MethodSpec::new(method_fn.sig.ident.clone());
-                if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.get(0) {
+                let mut spec = MethodSpec::default();
+                if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.first() {
                     if let Some(id) = p.get_ident() {
                         spec.macro_name = Some(id.clone());
                     }
                 }
 
-                let Some(receiver) = receiver_tokens(&method_fn.sig) else {
+                let Some(_receiver) = receiver_tokens(&method_fn.sig) else {
                     return Error::new(
                         method_fn.sig.span(),
                         "bobtail::block currently requires a self receiver",
                     )
-                    .to_compile_error()
-                    .into();
+                    .to_compile_error();
                 };
 
                 // Collect typed params and find tail start
@@ -635,13 +619,11 @@ fn block_impl(
                     warning_counter += 1;
                     Some(
                         Warning::new_deprecated(&unique_id)
-                            .old(&format!(
+                            .old(format!(
                                 "using `{}` without `#[tail]` attribute",
                                 method_fn.sig.ident
                             ))
-                            .new(&format!(
-                                "add `#[tail]` to make trailing arguments optional"
-                            ))
+                            .new("add `#[tail]` to make trailing arguments optional".to_string())
                             .span(method_fn.sig.ident.span())
                             .build_or_panic(),
                     )
@@ -711,14 +693,13 @@ fn block_impl(
                 #(#warnings)*
                 #(#items)*
             };
-            out.into()
+            out
         }
         other => Error::new(
             other.span(),
             "bobtail::block can only be used on an impl block",
         )
-        .to_compile_error()
-        .into(),
+        .to_compile_error(),
     }
 }
 
@@ -841,7 +822,7 @@ pub fn define(input: TokenStream) -> TokenStream {
 fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let crate_path = match bobtail_path() {
         Ok(p) => p,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let parsed: TailDefineInput = match syn::parse2(input.clone()) {
@@ -882,7 +863,7 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         });
     }
 
-    out.into()
+    out
 }
 
 #[cfg(test)]
