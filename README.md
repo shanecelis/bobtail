@@ -192,15 +192,20 @@ print!(pico8, "hello world").unwrap();
 
 ### A Caution
 
-This is my reason for creating this crate, but that does not mean I
+The above are my reasons for creating this crate, but that does not mean I
 wholeheartly endorse this kind of positional, omittable, API design. If I were
 not constrained by Pico-8's initial design and wanting to bear a strong
 resemblance to it, I would consider using structs expressively as named and
 omittable arguments potentially using other crates like
-[typed-builder](https://crates.io/crates/typed-builder) and
+[bon](https://crates.io/crates/bon),
+[typed-builder](https://crates.io/crates/typed-builder), and
 [derive_builder](https://crates.io/crates/derive_builder).
 
 ## Features
+
+bobtail generates self-contained and straightforward to inspect macros, but one
+cannot use the underscore '_' to omit values without using the `omit-token`
+feature.
 
 ### `omit-token` - Enable `_` placeholder syntax
 
@@ -209,37 +214,26 @@ arguments, enable the `omit-token` feature:
 
 ```toml
 [dependencies]
-bobtail = { version = "0.2", features = ["omit-token"] }
-# OR
-bobtail = { version = "0.2" } # Since it is enabled by default.
+bobtail = { version = "0.3", features = ["omit-token"] }
 ```
 
-With this feature enabled, you can write:
+With this feature enabled, one can write:
 
 ```rust,ignore
 assert_eq!(f!(1, _), 1);         // Explicitly use default for second arg
 assert_eq!(f!(1, _, 3), ...);    // Use default for second, explicit third
 ```
 
-Without the feature, you'll need to pass explicit default values:
+Without the feature, one would need to pass explicit default values:
 
 ```rust,ignore
-assert_eq!(f!(1, None), 1);      // Explicitly pass None/default
+assert_eq!(f!(1, None, 0), 1);           // Explicitly pass `None`
+assert_eq!(f!(1, Default::default(), 0), // Explicitly pass default
+           1);
 ```
 
 The trade-off is that `omit-token` uses a recursive helper macro internally,
 which makes macro expansion slightly more complex. 
-
-#### Without `omit-token` feature
-
-Without the `omit-token` feature, bobtail generates self-contained and
-straightforward to inspect macros, but one cannot use the underscore '_' to omit
-values.
-
-```toml
-[dependencies]
-bobtail = { version = "0.2", default-features = false }
-```
 
 ## Install
 
@@ -247,6 +241,13 @@ Add bobtail to a project with the following command:
 
 ``` sh
 cargo add bobtail
+```
+
+Or add these lines to the Cargo.toml file:
+
+```toml
+[dependencies]
+bobtail = "0.3"
 ```
 
 ## License
