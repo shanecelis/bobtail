@@ -1,5 +1,3 @@
-use bobtail;
-
 mod other_module {
     use bobtail;
 

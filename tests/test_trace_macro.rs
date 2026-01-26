@@ -1,8 +1,6 @@
 // #![feature(trace_macros)]
 // trace_macros!(true);
 
-use bobtail;
-
 #[macro_use]
 mod other_module {
     use bobtail;
@@ -27,8 +25,9 @@ mod other_module {
 mod test_module {
     use super::other_module;
 
+    #[test]
     pub fn test() {
-        let a = other_module::A(0);
+        let _a = other_module::A(0);
         // let _ = b!(a, 1, Some(2));
     }
 }
