@@ -36,3 +36,4 @@ bobtail_proc_macros = { version = "0.3.0", path = "bobtail_proc_macros" }
 trybuild = "1"
 proc-macro2 = "1"
 quote = "1"
+version-sync = "0.9.5"
