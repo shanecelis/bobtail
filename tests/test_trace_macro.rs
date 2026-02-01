@@ -1,7 +1,3 @@
-// #![feature(trace_macros)]
-// trace_macros!(true);
-
-#[macro_use]
 mod other_module {
     use bobtail;
 
@@ -10,7 +6,7 @@ mod other_module {
     #[bobtail::block]
     impl A {
         #[bobtail::bob]
-        pub fn b(&self, a: u8, #[bobtail::tail] b: Option<u8>) -> u8 {
+        pub(crate) fn b(&self, a: u8, #[bobtail::tail] b: Option<u8>) -> u8 {
             b.map(|x| x + a + self.0).unwrap_or(a)
         }
     }
@@ -20,15 +16,15 @@ mod other_module {
     }
 }
 
-// trace_macros!(false);
-
 mod test_module {
     use super::other_module;
+    // Import macro from the module
+    use super::other_module::b;
 
     #[test]
     pub fn test() {
-        let _a = other_module::A(0);
-        // let _ = b!(a, 1, Some(2));
+        let a = other_module::A(0);
+        let _ = b!(a, 1, Some(2));
     }
 }
 

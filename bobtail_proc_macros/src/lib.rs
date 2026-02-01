@@ -502,12 +502,22 @@ fn bob_impl(
         let match_arms =
             generate_fn_match_arms(&crate_path, &macro_name, fn_name, req_count, tail_count);
 
+        // Pass through the function's visibility to the macro
+        // Skip `use` for private functions (macro is already in scope)
+        let vis = &fun.vis;
+        let macro_reexport = if matches!(vis, Visibility::Inherited) {
+            quote! {}
+        } else {
+            quote! { #vis use #macro_name; }
+        };
+
         let out = quote! {
             #fun
             #warning
             macro_rules! #macro_name {
                 #match_arms
             }
+            #macro_reexport
         };
         // println!("BOB {}", &out);
         out
@@ -636,8 +646,8 @@ fn block_impl(
                     warnings.push(quote!(#warning));
                 }
 
-                // Check if the method is public
-                let is_public = matches!(method_fn.vis, Visibility::Public(_));
+                // Get the method's visibility
+                let method_vis = &method_fn.vis;
 
                 // Generate macro
                 let macro_name = &spec
@@ -653,20 +663,19 @@ fn block_impl(
                     tail_count,
                 );
 
-                // Generate the macro_rules! with explicit match arms
-                let macro_def = if is_public {
-                    quote! {
-                        #[macro_export]
-                        macro_rules! #macro_name {
-                            #match_arms
-                        }
-                    }
+                // Pass through the method's visibility to the macro
+                // Skip `use` for private methods (macro is already in scope)
+                let macro_reexport = if matches!(method_vis, Visibility::Inherited) {
+                    quote! {}
                 } else {
-                    quote! {
-                        macro_rules! #macro_name {
-                            #match_arms
-                        }
+                    quote! { #method_vis use #macro_name; }
+                };
+
+                let macro_def = quote! {
+                    macro_rules! #macro_name {
+                        #match_arms
                     }
+                    #macro_reexport
                 };
 
                 items.push(macro_def);
@@ -712,6 +721,7 @@ fn is_tail_marker(attrs: &[Attribute]) -> bool {
 #[derive(Debug)]
 struct ProtoItem {
     outer_attrs: Vec<Attribute>,
+    visibility: Visibility,
     macro_name: Ident,
     fn_name: Ident,
     has_receiver: bool,
@@ -734,6 +744,9 @@ impl syn::parse::Parse for ProtoItem {
                 macro_name = Some(mac);
             }
         }
+
+        // Parse optional visibility (pub, pub(crate), etc.)
+        let visibility: Visibility = input.parse()?;
 
         input.parse::<Token![fn]>()?;
         let fn_name: Ident = input.parse()?;
@@ -787,6 +800,7 @@ impl syn::parse::Parse for ProtoItem {
 
         Ok(Self {
             outer_attrs,
+            visibility,
             macro_name: macro_name.unwrap_or_else(|| fn_name.clone()),
             fn_name,
             has_receiver,
@@ -834,6 +848,7 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     for item in parsed.items {
         let ProtoItem {
             outer_attrs,
+            visibility,
             macro_name,
             fn_name,
             has_receiver,
@@ -853,13 +868,20 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
             generate_fn_match_arms(&crate_path, &macro_name, &fn_name, req_count, tail_count)
         };
 
-        // If #[macro_export] is in outer_attrs, use it; otherwise don't add it
-        // The attribute should have been parsed correctly by Attribute::parse_outer
+        // Pass through the function's visibility to the macro
+        // Skip `use` for private functions (macro is already in scope)
+        let macro_reexport = if matches!(visibility, Visibility::Inherited) {
+            quote! {}
+        } else {
+            quote! { #visibility use #macro_name; }
+        };
+
         out.extend(quote! {
             #(#outer_attrs)*
             macro_rules! #macro_name {
                 #match_arms
             }
+            #macro_reexport
         });
     }
 
@@ -989,6 +1011,7 @@ mod tests {
         let output_str = output.to_string();
 
         // Expected output differs based on omit-token feature
+        // Private function: no `use` statement (macro is already in scope)
         #[cfg(not(feature = "omit-token"))]
         let expected = r#"
 fn f (a : u8 , b : Option < u8 >) -> u8 {
@@ -1011,6 +1034,52 @@ macro_rules ! f {
     }
 
     #[test]
+    fn test_block_macro_output_crate() {
+        let input = r#"
+            impl A {
+                #[bobtail::bob]
+                pub(crate) fn b(&self, a: u8, #[tail] b: Option<u8>) -> u8 {
+                    b.map(|x| x + a).unwrap_or(a)
+                }
+            }
+        "#;
+
+        let input_ts: TokenStream = input.parse().unwrap();
+        let empty_attr: TokenStream = TokenStream::new();
+
+        let output = block_impl(empty_attr, input_ts);
+        let output_str = output.to_string();
+
+        // Expected output differs based on omit-token feature
+        // Visibility is passed through directly from the method
+        #[cfg(not(feature = "omit-token"))]
+        let expected = r#"
+impl A {
+  pub (crate) fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
+    b . map (| x | x + a) . unwrap_or (a) }
+  }
+  macro_rules ! b {
+    ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
+  }
+  pub (crate) use b ;
+"#;
+        #[cfg(feature = "omit-token")]
+        let expected = r#"
+impl A {
+  pub (crate) fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
+    b . map (| x | x + a) . unwrap_or (a) }
+  }
+  macro_rules ! b {
+    ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+    ($ self_ : expr , $ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (method $ self_ , b ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
+  }
+  pub (crate) use b ;
+"#;
+        assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
+    }
+
+    #[test]
     fn test_block_macro_output() {
         let input = r#"
             impl A {
@@ -1029,25 +1098,30 @@ macro_rules ! f {
 
         // Expected output differs based on omit-token feature
         #[cfg(not(feature = "omit-token"))]
+        // Uses pub(crate) use instead of #[macro_export]
         let expected = r#"
 impl A {
   pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
     b . map (| x | x + a) . unwrap_or (a) }
   }
-  # [macro_export] macro_rules ! b {
+  macro_rules ! b {
     ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
     ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
-}"#;
+  }
+  pub use b ;
+"#;
         #[cfg(feature = "omit-token")]
         let expected = r#"
 impl A {
   pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
     b . map (| x | x + a) . unwrap_or (a) }
   }
-  # [macro_export] macro_rules ! b {
+  macro_rules ! b {
     ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
     ($ self_ : expr , $ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (method $ self_ , b ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
-}"#;
+  }
+  pub use b ;
+"#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
 
@@ -1062,6 +1136,7 @@ impl A {
         let output_str = output.to_string();
 
         // Expected output differs based on omit-token feature
+        // Private function: no `use` statement (macro is already in scope)
         #[cfg(not(feature = "omit-token"))]
         let expected = r#"
 macro_rules ! f {
