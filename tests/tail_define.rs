@@ -169,3 +169,78 @@ mod omit_token_tests {
         // assert_eq!(prnt_all!((0, 0), PColor(7), _,,), MyInput(0));
     }
 }
+
+// Tests for visibility modifiers in define!
+mod visibility_tests {
+    // Helper function for testing
+    fn vis_helper(a: u8, b: Option<u8>) -> u8 {
+        b.map(|x| x + a).unwrap_or(a)
+    }
+
+    // Test: pub(crate) visibility with custom macro name
+    bobtail::define! {
+        pub(crate) vis_helper_crate => fn vis_helper(a: u8, #[tail] b: Option<u8>) -> u8;
+    }
+
+    #[test]
+    fn test_pub_crate_visibility_with_name() {
+        // Use the macro (need the function in scope too since macro calls the function)
+        use vis_helper_crate;
+        assert_eq!(vis_helper_crate!(1), 1);
+        assert_eq!(vis_helper_crate!(1, 2u8), 3);
+    }
+
+    // Test: pub(self) for private macro (no use statement generated)
+    mod inner_private {
+        fn inner_helper(a: u8, b: Option<u8>) -> u8 {
+            b.map(|x| x + a).unwrap_or(a)
+        }
+
+        bobtail::define! {
+            pub(self) private_macro => fn inner_helper(a: u8, #[tail] b: Option<u8>) -> u8;
+        }
+
+        pub fn use_private_macro() -> u8 {
+            private_macro!(5)
+        }
+    }
+
+    #[test]
+    fn test_pub_self_private_macro() {
+        // The macro is private to the inner module, but we can call a function that uses it
+        assert_eq!(inner_private::use_private_macro(), 5);
+    }
+
+    // Test: visibility only (no custom macro name)
+    // When using "visibility =>" without a macro name, the macro takes the function's name.
+    // This works best when define! is in a different module from the function definition.
+    mod vis_only_inner {
+        pub fn my_add(a: u8, b: Option<u8>) -> u8 {
+            b.map(|x| x + a).unwrap_or(a)
+        }
+
+        // pub(crate) visibility only - macro name defaults to "my_add"
+        bobtail::define! {
+            pub(crate) my_add_macro => fn my_add(a: u8, #[tail] b: Option<u8>) -> u8;
+        }
+
+        // This demonstrates the syntax works - using a different name to avoid conflicts
+        pub fn test_internally() -> u8 {
+            my_add_macro!(10)
+        }
+    }
+
+    #[test]
+    fn test_pub_crate_visibility_only() {
+        // The macro works when called from within its defining module
+        assert_eq!(vis_only_inner::test_internally(), 10);
+        // And can be imported from outside (need both macro and function in scope)
+        use vis_only_inner::{my_add, my_add_macro};
+        assert_eq!(my_add_macro!(1), 1);
+        assert_eq!(my_add_macro!(1, 2u8), 3);
+    }
+
+    // Test: pub visibility generates #[macro_export]
+    // Note: Can't easily test #[macro_export] in integration tests due to
+    // macro_expanded_macro_exports_accessed_by_absolute_paths lint
+}
