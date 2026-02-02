@@ -5,9 +5,9 @@ mod other_module {
 
     #[bobtail::block]
     impl A {
-        #[bobtail::bob]
-        // TODO: I don't understand why reducing visibility makes this work.
-        pub(crate) fn b1(&self, a: u8, #[bobtail::tail] b: Option<u8>) -> u8 {
+        // Use pub(crate) visibility for the macro to avoid #[macro_export]
+        #[bobtail::bob(pub(crate) b2)]
+        pub fn b(&self, a: u8, #[bobtail::tail] b: Option<u8>) -> u8 {
             b.map(|x| x + a + self.0).unwrap_or(a)
         }
     }
@@ -16,12 +16,13 @@ mod other_module {
 mod test_module {
 
     use super::other_module;
-    use super::other_module::b1;
+    // pub(crate) generates `pub(crate) use b2;` in the defining module
+    use super::other_module::b2;
 
     pub(crate) fn test() {
         let a = other_module::A(0);
         // The macro is accessible via `pub(crate) use` from the defining module
-        let _ = b1!(a, 1, Some(2));
+        let _ = b2!(a, 1, Some(2));
     }
 }
 

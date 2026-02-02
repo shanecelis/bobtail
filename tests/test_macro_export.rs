@@ -13,7 +13,7 @@ mod other_module {
 }
 
 // Import the macro from the module where it's defined (pub(crate) use)
-use other_module::b1;
+use other_module::b;
 
 fn main() {
     let a = other_module::A;

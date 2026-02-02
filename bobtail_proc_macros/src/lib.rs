@@ -21,8 +21,6 @@ use syn::{
     ImplItemMethod,
     Item,
     ItemFn,
-    Meta,
-    NestedMeta,
     Result,
     Token,
     Visibility,
@@ -52,9 +50,10 @@ fn bobtail_path() -> Result<proc_macro2::TokenStream> {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct MethodSpec {
     macro_name: Option<Ident>,
+    macro_vis: Option<Visibility>,
 }
 
 fn strip_block_attr(attrs: &mut Vec<Attribute>) {
@@ -77,6 +76,30 @@ fn is_bob_attr(a: &Attribute) -> bool {
     path_last_ident(&a.path).is_some_and(|id| id == "bob")
 }
 
+fn is_macro_attrs_attr(a: &Attribute) -> bool {
+    path_last_ident(&a.path).is_some_and(|id| id == "macro_attrs")
+}
+
+/// Extract attributes from #[bobtail::macro_attrs(...)] and convert them to outer attributes.
+/// Input: `#[bobtail::macro_attrs(doc(hidden), deprecated)]`
+/// Output: `[#[doc(hidden)], #[deprecated]]`
+fn extract_macro_attrs(attrs: &[Attribute]) -> Vec<proc_macro2::TokenStream> {
+    let mut result = Vec::new();
+    for attr in attrs {
+        if is_macro_attrs_attr(attr) {
+            // Parse the inner tokens as comma-separated metas
+            if let Ok(metas) = attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, Token![,]>::parse_terminated,
+            ) {
+                for meta in metas {
+                    result.push(quote! { #[#meta] });
+                }
+            }
+        }
+    }
+    result
+}
+
 fn receiver_tokens(sig: &syn::Signature) -> Option<proc_macro2::TokenStream> {
     let syn::FnArg::Receiver(r) = sig.inputs.iter().next()? else {
         return None;
@@ -89,30 +112,80 @@ fn receiver_tokens(sig: &syn::Signature) -> Option<proc_macro2::TokenStream> {
     })
 }
 
-fn parse_attr_args(attr: &Attribute) -> Result<Vec<NestedMeta>> {
+fn parse_bob_attr_from_attribute(attr: &Attribute) -> Result<BobAttrArgs> {
     // Support `#[bobtail::bob]` with no parentheses.
     if attr.tokens.is_empty() {
-        return Ok(Vec::new());
+        return Ok(BobAttrArgs::default());
     }
-    let punct: Punctuated<NestedMeta, Token![,]> =
-        attr.parse_args_with(Punctuated::<NestedMeta, Token![,]>::parse_terminated)?;
-    Ok(punct.into_iter().collect())
+    attr.parse_args_with(BobAttrArgs::parse)
 }
 
-fn parse_bob_attr_args(attr: proc_macro2::TokenStream) -> Result<Vec<NestedMeta>> {
-    if attr.is_empty() {
-        return Ok(Vec::new());
-    }
-    struct BobArgs(Punctuated<NestedMeta, Token![,]>);
-    impl Parse for BobArgs {
-        fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Self(Punctuated::<NestedMeta, Token![,]>::parse_terminated(
-                input,
-            )?))
+/// Parsed arguments from #[bob(...)] or #[bobtail::bob(...)]
+#[derive(Default)]
+struct BobAttrArgs {
+    macro_vis: Option<Visibility>,
+    macro_name: Option<Ident>,
+}
+
+impl Parse for BobAttrArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.is_empty() {
+            return Ok(Self::default());
         }
+
+        let mut macro_vis: Option<Visibility> = None;
+        let mut macro_name: Option<Ident> = None;
+
+        // Try to parse visibility first (pub, pub(crate), pub(self), etc.)
+        if input.peek(Token![pub]) {
+            macro_vis = Some(input.parse()?);
+        }
+
+        // Then try to parse an optional macro name (identifier)
+        if input.peek(Ident) {
+            macro_name = Some(input.parse()?);
+        }
+
+        Ok(Self {
+            macro_vis,
+            macro_name,
+        })
     }
-    let BobArgs(punct) = syn::parse2::<BobArgs>(attr)?;
-    Ok(punct.into_iter().collect())
+}
+
+fn parse_bob_attr_args(attr: proc_macro2::TokenStream) -> Result<BobAttrArgs> {
+    syn::parse2::<BobAttrArgs>(attr)
+}
+
+/// Check if visibility is private (inherited or pub(self))
+fn is_private_visibility(vis: &Visibility) -> bool {
+    match vis {
+        Visibility::Inherited => true,
+        Visibility::Restricted(r) => r.path.is_ident("self"),
+        _ => false,
+    }
+}
+
+/// Generate #[macro_export] attribute if visibility is pub
+fn generate_macro_export(vis: &Visibility) -> proc_macro2::TokenStream {
+    match vis {
+        Visibility::Public(_) => quote! { #[macro_export] },
+        _ => quote! {},
+    }
+}
+
+/// Generate the use statement for macro re-export based on visibility
+fn generate_macro_reexport(vis: &Visibility, macro_name: &Ident) -> proc_macro2::TokenStream {
+    if is_private_visibility(vis) {
+        // Private or pub(self) - no re-export
+        quote! {}
+    } else if matches!(vis, Visibility::Public(_)) {
+        // pub - handled by #[macro_export], no use statement needed
+        quote! {}
+    } else {
+        // pub(crate), pub(in path) - use the visibility directly
+        quote! { #vis use #macro_name; }
+    }
 }
 
 /// Generate match arms for a free function macro.
@@ -420,18 +493,15 @@ fn bob_impl(
             Err(e) => return e.to_compile_error(),
         };
 
-        let bob_args: Vec<NestedMeta> = match parse_bob_attr_args(attr) {
+        let bob_args = match parse_bob_attr_args(attr) {
             Ok(v) => v,
             Err(e) => return e.to_compile_error(),
         };
 
-        let mut macro_name: Option<Ident> = None;
-        if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.first() {
-            if let Some(id) = p.get_ident() {
-                macro_name = Some(id.clone());
-            }
-        }
-        let macro_name = macro_name.unwrap_or_else(|| fun.sig.ident.clone());
+        let macro_name = bob_args
+            .macro_name
+            .unwrap_or_else(|| fun.sig.ident.clone());
+        let macro_vis = bob_args.macro_vis;
 
         // Receiver isn't allowed in free functions, but syn would parse `self` anyway
         // as a typed arg (and later fail typechecking). Reject it explicitly.
@@ -489,8 +559,12 @@ fn bob_impl(
             .map(|i| typed.len().saturating_sub(i))
             .unwrap_or(0);
 
+        // Extract macro_attrs before stripping
+        let macro_attrs = extract_macro_attrs(&fun.attrs);
+
         // Strip marker attrs so the compiler never needs to resolve them.
-        fun.attrs.retain(|a| !is_bob_attr(a));
+        fun.attrs
+            .retain(|a| !is_bob_attr(a) && !is_macro_attrs_attr(a));
         for arg in &mut fun.sig.inputs {
             let syn::FnArg::Typed(pat_ty) = arg else {
                 continue;
@@ -502,18 +576,18 @@ fn bob_impl(
         let match_arms =
             generate_fn_match_arms(&crate_path, &macro_name, fn_name, req_count, tail_count);
 
-        // Pass through the function's visibility to the macro
-        // Skip `use` for private functions (macro is already in scope)
-        let vis = &fun.vis;
-        let macro_reexport = if matches!(vis, Visibility::Inherited) {
-            quote! {}
-        } else {
-            quote! { #vis use #macro_name; }
-        };
+        // Use macro_vis if provided, otherwise fall back to function visibility
+        let effective_vis = macro_vis.as_ref().unwrap_or(&fun.vis);
+
+        // Generate macro export and reexport based on visibility
+        let macro_export = generate_macro_export(effective_vis);
+        let macro_reexport = generate_macro_reexport(effective_vis, &macro_name);
 
         let out = quote! {
             #fun
             #warning
+            #(#macro_attrs)*
+            #macro_export
             macro_rules! #macro_name {
                 #match_arms
             }
@@ -576,18 +650,16 @@ fn block_impl(
                 }
                 let Some(bob_attr) = found_bob else { continue };
 
-                let bob_args: Vec<NestedMeta> = match parse_attr_args(&bob_attr) {
+                let bob_args = match parse_bob_attr_from_attribute(&bob_attr) {
                     Ok(v) => v,
                     Err(e) => return e.to_compile_error(),
                 };
 
-                // Default macro name = method name, unless `#[bobtail::bob(name)]`.
-                let mut spec = MethodSpec::default();
-                if let Some(NestedMeta::Meta(Meta::Path(p))) = bob_args.first() {
-                    if let Some(id) = p.get_ident() {
-                        spec.macro_name = Some(id.clone());
-                    }
-                }
+                // Build MethodSpec from parsed args
+                let spec = MethodSpec {
+                    macro_name: bob_args.macro_name,
+                    macro_vis: bob_args.macro_vis,
+                };
 
                 let Some(_receiver) = receiver_tokens(&method_fn.sig) else {
                     return Error::new(
@@ -646,32 +718,33 @@ fn block_impl(
                     warnings.push(quote!(#warning));
                 }
 
-                // Get the method's visibility
-                let method_vis = &method_fn.vis;
+                // Extract macro_attrs from method attributes
+                let macro_attrs = extract_macro_attrs(&method_fn.attrs);
 
                 // Generate macro
-                let macro_name = &spec
+                let macro_name = spec
                     .macro_name
                     .unwrap_or_else(|| method_fn.sig.ident.clone());
                 let fn_name = &method_fn.sig.ident;
 
                 let match_arms = generate_method_match_arms(
                     &crate_path,
-                    macro_name,
+                    &macro_name,
                     fn_name,
                     req_count,
                     tail_count,
                 );
 
-                // Pass through the method's visibility to the macro
-                // Skip `use` for private methods (macro is already in scope)
-                let macro_reexport = if matches!(method_vis, Visibility::Inherited) {
-                    quote! {}
-                } else {
-                    quote! { #method_vis use #macro_name; }
-                };
+                // Use macro_vis if provided, otherwise fall back to method visibility
+                let effective_vis = spec.macro_vis.as_ref().unwrap_or(&method_fn.vis);
+
+                // Generate macro export and reexport based on visibility
+                let macro_export = generate_macro_export(effective_vis);
+                let macro_reexport = generate_macro_reexport(effective_vis, &macro_name);
 
                 let macro_def = quote! {
+                    #(#macro_attrs)*
+                    #macro_export
                     macro_rules! #macro_name {
                         #match_arms
                     }
@@ -686,7 +759,9 @@ fn block_impl(
                 let ImplItem::Method(method_fn) = it else {
                     continue;
                 };
-                method_fn.attrs.retain(|a| !is_bob_attr(a));
+                method_fn
+                    .attrs
+                    .retain(|a| !is_bob_attr(a) && !is_macro_attrs_attr(a));
                 for arg in &mut method_fn.sig.inputs {
                     let syn::FnArg::Typed(pat_ty) = arg else {
                         continue;
@@ -721,8 +796,9 @@ fn is_tail_marker(attrs: &[Attribute]) -> bool {
 #[derive(Debug)]
 struct ProtoItem {
     outer_attrs: Vec<Attribute>,
-    visibility: Visibility,
-    macro_name: Ident,
+    macro_vis: Option<Visibility>,
+    macro_name: Option<Ident>,
+    fn_vis: Visibility,
     fn_name: Ident,
     has_receiver: bool,
     req_count: usize,
@@ -733,20 +809,38 @@ impl syn::parse::Parse for ProtoItem {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
         let outer_attrs = input.call(Attribute::parse_outer)?;
 
-        // Optional: `mac_name =>`
+        // Parse optional macro visibility and/or name before `=>`
+        // Syntax: `macro_vis? macro_name? => fn_vis? fn name(...)`
+        let mut macro_vis: Option<Visibility> = None;
         let mut macro_name: Option<Ident> = None;
-        if input.peek(Ident) {
+
+        // Check if there's `=>` before `fn` by forking and looking ahead
+        let has_arrow = {
             let fork = input.fork();
-            let _maybe: Ident = fork.parse()?;
-            if fork.peek(Token![=>]) {
-                let mac: Ident = input.parse()?;
-                input.parse::<Token![=>]>()?;
-                macro_name = Some(mac);
+            // Skip visibility if present
+            let _: Visibility = fork.parse()?;
+            // Skip ident if present (but not `fn`)
+            if fork.peek(Ident) && !fork.peek(Token![fn]) {
+                let _: Ident = fork.parse()?;
             }
+            fork.peek(Token![=>])
+        };
+
+        if has_arrow {
+            // Parse macro visibility (may be Inherited if not specified)
+            let parsed_vis: Visibility = input.parse()?;
+            if !matches!(parsed_vis, Visibility::Inherited) {
+                macro_vis = Some(parsed_vis);
+            }
+            // Parse macro name if present (but not `fn`)
+            if input.peek(Ident) && !input.peek(Token![fn]) {
+                macro_name = Some(input.parse()?);
+            }
+            input.parse::<Token![=>]>()?;
         }
 
-        // Parse optional visibility (pub, pub(crate), etc.)
-        let visibility: Visibility = input.parse()?;
+        // Parse function visibility (pub, pub(crate), etc.)
+        let fn_vis: Visibility = input.parse()?;
 
         input.parse::<Token![fn]>()?;
         let fn_name: Ident = input.parse()?;
@@ -800,8 +894,9 @@ impl syn::parse::Parse for ProtoItem {
 
         Ok(Self {
             outer_attrs,
-            visibility,
-            macro_name: macro_name.unwrap_or_else(|| fn_name.clone()),
+            macro_vis,
+            macro_name,
+            fn_vis,
             fn_name,
             has_receiver,
             req_count,
@@ -848,13 +943,17 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     for item in parsed.items {
         let ProtoItem {
             outer_attrs,
-            visibility,
+            macro_vis,
             macro_name,
+            fn_vis,
             fn_name,
             has_receiver,
             req_count,
             tail_count,
         } = item;
+
+        // Macro name defaults to function name if not specified
+        let macro_name = macro_name.unwrap_or_else(|| fn_name.clone());
 
         // Note: We don't emit warnings here in define! because:
         // 1. When called from block!, warnings are already emitted there
@@ -868,16 +967,16 @@ fn define_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
             generate_fn_match_arms(&crate_path, &macro_name, &fn_name, req_count, tail_count)
         };
 
-        // Pass through the function's visibility to the macro
-        // Skip `use` for private functions (macro is already in scope)
-        let macro_reexport = if matches!(visibility, Visibility::Inherited) {
-            quote! {}
-        } else {
-            quote! { #visibility use #macro_name; }
-        };
+        // Use macro_vis if provided, otherwise fall back to function visibility
+        let effective_vis = macro_vis.as_ref().unwrap_or(&fn_vis);
+
+        // Generate macro export and reexport based on visibility
+        let macro_export = generate_macro_export(effective_vis);
+        let macro_reexport = generate_macro_reexport(effective_vis, &macro_name);
 
         out.extend(quote! {
             #(#outer_attrs)*
+            #macro_export
             macro_rules! #macro_name {
                 #match_arms
             }
@@ -1079,6 +1178,52 @@ impl A {
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
 
+
+    #[test]
+    fn test_block_macro_output_with_rename() {
+        let input = r#"
+            impl A {
+                #[bobtail::bob(b_macro)]
+                pub fn b(&self, a: u8, #[tail] b: Option<u8>) -> u8 {
+                    b.map(|x| x + a).unwrap_or(a)
+                }
+            }
+        "#;
+
+        let input_ts: TokenStream = input.parse().unwrap();
+        let empty_attr: TokenStream = TokenStream::new();
+
+        let output = block_impl(empty_attr, input_ts);
+        let output_str = output.to_string();
+
+        // Expected output differs based on omit-token feature
+        // pub fn generates #[macro_export]
+        #[cfg(not(feature = "omit-token"))]
+        let expected = r#"
+impl A {
+  pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
+    b . map (| x | x + a) . unwrap_or (a) }
+  }
+  # [macro_export]
+  macro_rules ! b_macro {
+    ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+    ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
+  }
+"#;
+        #[cfg(feature = "omit-token")]
+        let expected = r#"
+impl A {
+  pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
+    b . map (| x | x + a) . unwrap_or (a) }
+  }
+  # [macro_export]
+  macro_rules ! b_macro {
+    ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
+    ($ self_ : expr , $ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (method $ self_ , b ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
+  }
+"#;
+        assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
+    }
     #[test]
     fn test_block_macro_output() {
         let input = r#"
@@ -1097,18 +1242,18 @@ impl A {
         let output_str = output.to_string();
 
         // Expected output differs based on omit-token feature
+        // pub fn generates #[macro_export]
         #[cfg(not(feature = "omit-token"))]
-        // Uses pub(crate) use instead of #[macro_export]
         let expected = r#"
 impl A {
   pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
     b . map (| x | x + a) . unwrap_or (a) }
   }
+  # [macro_export]
   macro_rules ! b {
     ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
     ($ self_ : expr , $ arg_0 : expr , $ tail_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: convert :: From :: from ($ tail_0)) } ;
   }
-  pub use b ;
 "#;
         #[cfg(feature = "omit-token")]
         let expected = r#"
@@ -1116,11 +1261,11 @@ impl A {
   pub fn b (& self , a : u8 , b : Option < u8 >) -> u8 {
     b . map (| x | x + a) . unwrap_or (a) }
   }
+  # [macro_export]
   macro_rules ! b {
     ($ self_ : expr , $ arg_0 : expr $ (,) ?) => { $ self_ . b ($ arg_0 , :: core :: default :: Default :: default ()) } ;
     ($ self_ : expr , $ arg_0 : expr , $ ($ __tail : tt) +) => { :: bobtail :: __bobtail_munch ! (method $ self_ , b ; [$ arg_0 ,] ; [:: core :: default :: Default :: default () ,] ; $ ($ __tail) +) } ;
   }
-  pub use b ;
 "#;
         assert_eq!(output_str.trim(), substitute_newline_star(expected.trim()));
     }
