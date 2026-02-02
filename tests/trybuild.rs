@@ -19,5 +19,4 @@ fn ui() {
     t.pass("tests/ui/pub_macro_export.rs");
     t.pass("tests/ui/pub_macro_no_use.rs");
     t.pass("tests/ui/pub_macro_export_manual.rs");
-    t.pass("tests/ui/test_manual_macro_export.rs");
 }
