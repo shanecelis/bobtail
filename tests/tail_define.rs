@@ -243,4 +243,38 @@ mod visibility_tests {
     // Test: pub visibility generates #[macro_export]
     // Note: Can't easily test #[macro_export] in integration tests due to
     // macro_expanded_macro_exports_accessed_by_absolute_paths lint
+
+    // Test: when using =>, visibility must be placed before macro name
+    mod inherit_vis_test {
+        pub(crate) fn my_fn(a: u8, b: Option<u8>) -> u8 {
+            b.map(|x| x + a).unwrap_or(a)
+        }
+
+        // Correct: visibility before the macro name
+        bobtail::define! {
+            pub(crate) vis_macro => fn my_fn(a: u8, #[tail] b: Option<u8>) -> u8;
+        }
+
+        // Without visibility, macro is private
+        bobtail::define! {
+            private_macro => fn my_fn(a: u8, #[tail] b: Option<u8>) -> u8;
+        }
+
+        // Test that private_macro works inside the module
+        pub fn use_private_macro() -> u8 {
+            private_macro!(7)
+        }
+    }
+
+    #[test]
+    fn test_visibility_before_macro_name() {
+        // vis_macro is pub(crate) because visibility is before macro name
+        use inherit_vis_test::{my_fn, vis_macro};
+        assert_eq!(vis_macro!(5), 5);
+        assert_eq!(vis_macro!(5, 3u8), 8);
+
+        // private_macro is not accessible here (it's private to inherit_vis_test)
+        // but we can call it indirectly
+        assert_eq!(inherit_vis_test::use_private_macro(), 7);
+    }
 }

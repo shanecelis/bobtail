@@ -1,0 +1,12 @@
+error: visibility should be placed before the macro name, not before `fn`
+       hint: use `pub(crate) macro_name => fn foo(...)` instead of `macro_name => pub(crate) fn foo(...)`
+ --> tests/ui/define_vis_after_arrow.rs:9:17
+  |
+9 |     my_macro => pub(crate) fn my_fn(a: u8, #[tail] b: Option<u8>) -> u8;
+  |                 ^^^
+
+error: cannot find macro `my_macro` in this scope
+  --> tests/ui/define_vis_after_arrow.rs:13:13
+   |
+13 |     let _ = my_macro!(1);
+   |             ^^^^^^^^

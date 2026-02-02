@@ -4,6 +4,7 @@ fn ui() {
 
     // These tests have stable error messages across feature configurations
     t.compile_fail("tests/ui/warn_*.rs");
+    t.compile_fail("tests/ui/define_vis_after_arrow.rs");
 
     // This test's error message differs with omit-token feature
     // Only run it when the feature is enabled (the .stderr reflects that output)

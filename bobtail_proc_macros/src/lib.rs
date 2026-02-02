@@ -842,6 +842,16 @@ impl syn::parse::Parse for ProtoItem {
         // Parse function visibility (pub, pub(crate), etc.)
         let fn_vis: Visibility = input.parse()?;
 
+        // If arrow is present, visibility should be before the macro name, not before `fn`
+        if has_arrow && !matches!(fn_vis, Visibility::Inherited) {
+            return Err(Error::new(
+                fn_vis.span(),
+                "visibility should be placed before the macro name, not before `fn`\n\
+                 hint: use `pub(crate) macro_name => fn foo(...)` instead of \
+                 `macro_name => pub(crate) fn foo(...)`",
+            ));
+        }
+
         input.parse::<Token![fn]>()?;
         let fn_name: Ident = input.parse()?;
 
