@@ -235,6 +235,75 @@ assert_eq!(f!(1, Default::default(), 0), // Explicitly pass default
 The trade-off is that `omit-token` uses a recursive helper macro internally,
 which makes macro expansion slightly more complex. 
 
+## Advanced Features
+
+### Macro Visibility
+
+By default, the generated macro has the same visibility as the function. One can
+override this with explicit visibility:
+
+**For `#[bob]` attribute:**
+
+```rust,ignore
+#[bobtail::bob(pub(crate))]           // Define visibility.
+#[bobtail::bob(pub(crate) my_macro)]  // Define Visibility and macro name.
+#[bobtail::bob(pub(self))]            // Define private macro.
+```
+
+**For `define!` macro:**
+
+```rust,ignore
+bobtail::define! {
+    pub(crate) my_macro => fn foo(a, #[tail] b);  // Define visibility and macro name.
+    pub(crate) => fn bar(a, #[tail] b);           // Define macro visibility.
+    pub(self) => fn bar(a, #[tail] b);            // Define private macro.
+}
+```
+
+- `pub` visibility adds `#[macro_export]`.
+- `pub(crate)` and `pub(in path)` use re-exports.
+- `pub(self)` creates a private macro even for a public function.
+
+### Macro Attributes
+
+Add custom attributes to generated macros using `#[bobtail::macro_attrs(...)]`:
+
+```rust,ignore
+#[bobtail::macro_attrs(doc(hidden))]
+#[bobtail::bob]
+pub fn foo(a: u8, #[tail] b: Option<u8>) -> u8 {
+    b.map(|x| x + a).unwrap_or(a)
+}
+```
+
+For `define!`, use outer attributes directly:
+
+```rust,ignore
+bobtail::define! {
+    #[doc(hidden)]
+    fn foo(a, #[tail] b);
+}
+```
+
+### Typeless Parameters in define!
+
+Types are optional in `define!` since only parameter counts and `#[tail]`
+markers matter for macro generation:
+
+```rust,ignore
+bobtail::define! {
+    fn foo(a, #[tail] b);  // No types needed
+}
+```
+
+This is equivalent to:
+
+```rust,ignore
+bobtail::define! {
+    fn foo(a: u8, #[tail] b: Option<u8>) -> u8;
+}
+```
+
 ## Install
 
 Add bobtail to a project with the following command:
