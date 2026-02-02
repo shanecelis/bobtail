@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## [unreleased]
+## [0.3.0] - 2026-02-02
 
 - Add macro visibility syntax: `#[bob(pub(crate))]` and `pub(crate) => fn foo(...)`.
 - Add `#[bobtail::macro_attrs(...)]` for custom macro attributes.

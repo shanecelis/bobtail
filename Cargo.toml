@@ -1,6 +1,6 @@
 [package]
 name = "bobtail"
-version = "0.3.0"
+version.workspace = true
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Generate macro proxies of functions whose tails can be \"bobbed\" as in cut off"
@@ -19,6 +19,8 @@ categories = [
 
 [workspace]
 members = ["bobtail_proc_macros"]
+[workspace.package]
+version = "0.3.0"
 
 [features]
 default = []
