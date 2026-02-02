@@ -11,8 +11,6 @@ use proc_macro_warning::Warning;
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
-    // parse_macro_input,
-    punctuated::Punctuated,
     spanned::Spanned,
     Attribute,
     Error,
@@ -857,41 +855,57 @@ impl syn::parse::Parse for ProtoItem {
 
         let content;
         syn::parenthesized!(content in input);
-        let args: Punctuated<syn::FnArg, Token![,]> =
-            content.parse_terminated(syn::FnArg::parse)?;
 
+        // Custom parsing to allow typeless parameters like `fn foo(a, #[tail] b)`
+        // We only need: whether it has a receiver, count of params, and which have #[tail]
         let mut has_receiver = false;
-        let mut typed: Vec<syn::PatType> = Vec::new();
-        for (i, a) in args.into_iter().enumerate() {
-            match a {
-                syn::FnArg::Receiver(_) => {
-                    if i != 0 {
-                        return Err(Error::new(
-                            fn_name.span(),
-                            "receiver must be the first parameter",
-                        ));
-                    }
-                    has_receiver = true;
-                }
-                syn::FnArg::Typed(p) => typed.push(p),
-            }
-        }
-
-        // Find the first #[tail] marker (if any).
+        let mut param_count = 0usize;
         let mut tail_start: Option<usize> = None;
-        for (i, p) in typed.iter().enumerate() {
-            if is_tail_marker(&p.attrs) {
-                tail_start = Some(i);
-                break;
+
+        while !content.is_empty() {
+            // Parse optional attributes (for #[tail])
+            let attrs = content.call(syn::Attribute::parse_outer)?;
+
+            // Check for receiver (self, &self, &mut self)
+            if content.peek(Token![self]) || content.peek(Token![&]) {
+                // Parse and discard the receiver
+                let _: syn::Receiver = content.parse()?;
+                if param_count != 0 {
+                    return Err(Error::new(
+                        fn_name.span(),
+                        "receiver must be the first parameter",
+                    ));
+                }
+                has_receiver = true;
+            } else {
+                // Parse parameter name (identifier or pattern)
+                let _name: Ident = content.parse()?;
+
+                // Optionally parse `: Type` if present
+                if content.peek(Token![:]) {
+                    content.parse::<Token![:]>()?;
+                    let _ty: syn::Type = content.parse()?;
+                }
+
+                // Check for #[tail] marker
+                if tail_start.is_none() && is_tail_marker(&attrs) {
+                    tail_start = Some(param_count);
+                }
+                param_count += 1;
+            }
+
+            // Parse comma if more params follow
+            if !content.is_empty() {
+                content.parse::<Token![,]>()?;
             }
         }
 
         let req_count = match tail_start {
             Some(i) => i,
-            None => typed.len(),
+            None => param_count,
         };
         let tail_count = match tail_start {
-            Some(i) => typed.len().saturating_sub(i),
+            Some(i) => param_count.saturating_sub(i),
             None => 0,
         };
 

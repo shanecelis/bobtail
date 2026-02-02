@@ -278,3 +278,21 @@ mod visibility_tests {
         assert_eq!(inherit_vis_test::use_private_macro(), 7);
     }
 }
+
+// Test typeless parameters in define!
+mod typeless_params {
+    fn add(a: u8, b: Option<u8>) -> u8 {
+        b.map(|x| x + a).unwrap_or(a)
+    }
+
+    // define! without types - only parameter names and #[tail] marker
+    bobtail::define! {
+        typeless_add => fn add(a, #[tail] b);
+    }
+
+    #[test]
+    fn test_typeless_define() {
+        assert_eq!(typeless_add!(5), 5);
+        assert_eq!(typeless_add!(5, 3u8), 8);
+    }
+}
