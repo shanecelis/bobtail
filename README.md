@@ -242,15 +242,15 @@ which makes macro expansion slightly more complex.
 By default, the generated macro has the same visibility as the function. One can
 override this with explicit visibility:
 
-**For `#[bob]` attribute:**
+For `#[bob]` attribute:
 
 ```rust,ignore
-#[bobtail::bob(pub(crate))]           // Define visibility.
-#[bobtail::bob(pub(crate) my_macro)]  // Define Visibility and macro name.
+#[bobtail::bob(pub(crate) my_macro)]  // Define visibility and macro name.
+#[bobtail::bob(pub(crate))]           // Define macro visibility.
 #[bobtail::bob(pub(self))]            // Define private macro.
 ```
 
-**For `define!` macro:**
+For `define!` macro:
 
 ```rust,ignore
 bobtail::define! {

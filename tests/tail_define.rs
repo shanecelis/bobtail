@@ -179,13 +179,12 @@ mod visibility_tests {
 
     // Test: pub(crate) visibility with custom macro name
     bobtail::define! {
-        pub(crate) vis_helper_crate => fn vis_helper(a: u8, #[tail] b: Option<u8>) -> u8;
+        vis_helper_crate => fn vis_helper(a: u8, #[tail] b: Option<u8>) -> u8;
     }
 
     #[test]
     fn test_pub_crate_visibility_with_name() {
         // Use the macro (need the function in scope too since macro calls the function)
-        use vis_helper_crate;
         assert_eq!(vis_helper_crate!(1), 1);
         assert_eq!(vis_helper_crate!(1, 2u8), 3);
     }
